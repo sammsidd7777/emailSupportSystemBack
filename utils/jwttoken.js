@@ -14,12 +14,13 @@ const createAccessToken = async (
     { expiresIn: tokenLife }
   );
 
-  res.cookie("token", token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: tokenTime,
-  });
+res.cookie("token", token, {
+  httpOnly: true,
+  secure: true,
+  sameSite: "none",
+  maxAge: tokenTime,
+  path: "/",
+});
 
   return res.status(200).json({
     success: true,
