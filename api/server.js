@@ -22,7 +22,7 @@ app.use(
   cors({
     origin: [
       "http://localhost:5173",
-      "https://email-support-six.vercel.app",
+      "https://email-support-theta.vercel.app/",
       process.env.CLIENT_URL,
     ].filter(Boolean),
     credentials: true,
