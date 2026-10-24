@@ -183,32 +183,67 @@ const assignTicket = async (req, res, next) => {
 
     await ticket.save();
 
-    // Email notifications should not undo a successful assignment
-    const notifications = [
-      {
-        to: agent.Email,
-        subject: "You have been assigned a new ticket",
-        text: `Ticket ${ticket.TicketNumber}: ${ticket.Subject}`,
-      },
-      {
-        to: ticket.RequesterEmail,
-        subject: "Your support ticket has been assigned",
-        text: "Our support agent is reviewing your ticket and will respond as soon as possible.",
-      },
-    ];
+  // Send assignment notification emails to both agent and customer
+const notifications = [
+  {
+    to: agent.Email,
+    subject: `New Ticket Assigned: ${ticket.TicketNumber}`,
+    text: `
+Hello ${agent.Name || "Support Agent"},
 
-    const emailResults = await Promise.allSettled(
-      notifications.map((email) => sendTestEmail(email)),
+A new support ticket has been assigned to you.
+
+Ticket Number: ${ticket.TicketNumber}
+Subject: ${ticket.Subject}
+
+Please log in to your support dashboard to review and respond to the ticket.
+
+Regards,
+Support Team
+    `.trim(),
+  },
+  {
+    to: ticket.RequesterEmail,
+    subject: `Your Ticket Has Been Assigned: ${ticket.TicketNumber}`,
+    text: `
+Hello ${ticket.RequesterName || "Customer"},
+
+Your support ticket has been successfully assigned to a support agent.
+
+Ticket Number: ${ticket.TicketNumber}
+Subject: ${ticket.Subject}
+
+Our support agent will review your issue and respond as soon as possible.
+
+Thank you for contacting our support team.
+
+Regards,
+Support Team
+    `.trim(),
+  },
+];
+
+// Email failures should not undo the successful ticket assignment
+const emailResults = await Promise.allSettled(
+  notifications.map(async (email) => {
+    if (!email.to) {
+      throw new Error("Recipient email is missing");
+    }
+
+    return sendTestEmail(email);
+  }),
+);
+
+emailResults.forEach((result, index) => {
+  if (result.status === "fulfilled") {
+    console.log(`Email sent to ${notifications[index].to}`);
+  } else {
+    console.error(
+      `Failed to send email to ${notifications[index].to}:`,
+      result.reason?.message || result.reason,
     );
-
-    emailResults.forEach((result, index) => {
-      if (result.status === "rejected") {
-        console.error(
-          `Assignment notification ${index + 1} failed:`,
-          result.reason,
-        );
-      }
-    });
+  }
+});
 
     // Return populated agent details
     const updatedTicket = await TICKET.findById(ticket._id).populate(
