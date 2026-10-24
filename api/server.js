@@ -31,14 +31,15 @@ app.use(
 app.use(express.json());
 app.use(cookieParser());
 
+// Health check
 app.get("/", (req, res) => {
   res.status(200).json({
     success: true,
-    message: "Backend API is running",
+    message: "Email Support Backend API is running",
   });
 });
 
-// Connect to MongoDB before handling API routes
+// Database connection
 app.use(async (req, res, next) => {
   try {
     await connectDB(process.env.MONGOURL);
@@ -48,19 +49,16 @@ app.use(async (req, res, next) => {
   }
 });
 
-// Existing routes
-// app.use("/api/user", userRoute);
-// app.use("/api/auth", authRoute);
-// app.use("/api/tickets", ticketRoute);
-// app.use("/api/admin", adminRoute);
-// app.use("/api/agent", agentRoute);
-// app.use("/api/messages", messageRoute);
+// API routes
+app.use("/api/auth", authRoute);
+app.use("/api/tickets", ticketRoute);
+app.use("/api/admin", adminRoute);
+app.use("/api/agent", agentRoute);
+app.use("/api/user", userRoute);
+app.use("/api/messages", messageRoute);
 
-app.use("/",res.status(200).json({
-  message:"hii api is working"
-}))
-
-// Error handler last
+// Error handler must be last
 app.use(errorMiddleware);
 
+// Export Express app for Vercel
 module.exports = app;
