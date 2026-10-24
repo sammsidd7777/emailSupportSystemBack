@@ -49,12 +49,16 @@ app.use(async (req, res, next) => {
 });
 
 // Existing routes
-app.use("/api/user", userRoute);
-app.use("/api/auth", authRoute);
-app.use("/api/tickets", ticketRoute);
-app.use("/api/admin", adminRoute);
-app.use("/api/agent", agentRoute);
-app.use("/api/messages", messageRoute);
+// app.use("/api/user", userRoute);
+// app.use("/api/auth", authRoute);
+// app.use("/api/tickets", ticketRoute);
+// app.use("/api/admin", adminRoute);
+// app.use("/api/agent", agentRoute);
+// app.use("/api/messages", messageRoute);
+
+app.use("/",res.status(200).json({
+  message:"hii api is working"
+}))
 
 // Error handler last
 app.use(errorMiddleware);
