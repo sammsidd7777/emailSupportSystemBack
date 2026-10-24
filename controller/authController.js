@@ -3,7 +3,7 @@ const USER = require("../module/userSchema");
 const crypto = require("crypto");
 const bcrypt = require("bcrypt");
 const nodemailer = require("nodemailer");
-const transporter = require("../utils/Email");
+const transporter = require("../utils/email.js");
 const jwt = require("jsonwebtoken");
 const createAccessToken = require("../utils/jwttoken");
 
