@@ -1,8 +1,8 @@
 // routes/ticketMessageRoutes.js
 
 const express = require("express");
-const { userReplyToTicket, myProfile, updateProfile, updateEmail,verifyEmailOtp } = require("../controller/userController");
 const { authorize, protect } = require("../middleware/authMiddleware");
+const { myProfile, updateProfile, updateEmail, verifyEmailOtp } = require("../controller/userController");
 const router = express.Router();
 
 
@@ -23,7 +23,7 @@ router.post(
 
 
 // Get user profile
-router.get("/profile", protect, myProfile);
+router.get("/profile", protect,myProfile );
 
 // Update name and phone
 router.post("/profile", protect, updateProfile);

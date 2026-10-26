@@ -3,9 +3,10 @@ const TICKET = require("../module/ticketSchema");
 const TICKETMESSAGE = require("../module/ticketMessageSchema");
 const AppError = require("../utils/AppError");
 const USER = require("../module/userSchema");
-import bcrypt from "bcryptjs";
-import crypto from "crypto";
+const  bcrypt =require("bcryptjs");
+const  crypto =("crypto");
 const transporter = require("../utils/email.js");
+const mongoose = require("mongoose");
 
 
 
@@ -467,4 +468,4 @@ const verifyEmailOtp = async (req, res, next) => {
 };
 
 
-module.exports = { userReplyToTicket,myProfile,updateEmail,updateProfile,verifyEmailOtp };
+module.exports = { userReplyToTicket,myProfile,updateProfile,updateEmail,verifyEmailOtp };
