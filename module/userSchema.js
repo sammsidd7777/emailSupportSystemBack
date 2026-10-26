@@ -54,7 +54,25 @@ OtpPurpose: {
     RefreshToken: {
         type: String,
         default: null
-    }
+    },
+
+    PendingEmail: {
+  type: String,
+  default: null,
+  lowercase: true
+},
+EmailOtpHash: {
+  type: String,
+  default: null
+},
+EmailOtpExpiresAt: {
+  type: Date,
+  default: null
+},
+EmailOtpAttempts: {
+  type: Number,
+  default: 0
+}
 
 },
     {

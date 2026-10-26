@@ -1,7 +1,7 @@
 // routes/ticketMessageRoutes.js
 
 const express = require("express");
-const { userReplyToTicket, myProfile } = require("../controller/userController");
+const { userReplyToTicket, myProfile, updateProfile, updateEmail,verifyEmailOtp } = require("../controller/userController");
 const { authorize, protect } = require("../middleware/authMiddleware");
 const router = express.Router();
 
@@ -19,6 +19,21 @@ router.post(
   userReplyToTicket
 );
 
-router.get("/profile",protect,myProfile)
+
+
+
+// Get user profile
+router.get("/profile", protect, myProfile);
+
+// Update name and phone
+router.post("/profile", protect, updateProfile);
+
+// Request email change (send OTP to new email)
+router.post("/profile/email/change-request", protect, updateEmail);
+
+// Verify OTP and update email
+router.post("/profile/email/verify-otp", protect, verifyEmailOtp);
+
+
 
 module.exports = router;
