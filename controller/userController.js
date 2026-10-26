@@ -2,6 +2,8 @@
 const TICKET = require("../module/ticketSchema");
 const TICKETMESSAGE = require("../module/ticketMessageSchema");
 const AppError = require("../utils/AppError");
+const USER = require("../module/userSchema");
+
 
 const userReplyToTicket = async (req, res, next) => {
   try {
@@ -75,5 +77,31 @@ const userReplyToTicket = async (req, res, next) => {
     return next(error);
   }
 };
+const myProfile = async (req, res) => {
+  try {
+    const id = req?.user?._id;
 
-module.exports = { userReplyToTicket };
+    const user = await USER.findById(id).select("-password");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Your profile loaded successfully",
+      user,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load profile",
+      error: error.message,
+    });
+  }
+};
+
+module.exports = { userReplyToTicket,myProfile };

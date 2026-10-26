@@ -1,7 +1,7 @@
 // routes/ticketMessageRoutes.js
 
 const express = require("express");
-const { userReplyToTicket } = require("../controller/userController");
+const { userReplyToTicket, myProfile } = require("../controller/userController");
 const { authorize, protect } = require("../middleware/authMiddleware");
 const router = express.Router();
 
@@ -18,5 +18,7 @@ router.post(
   authorize("customer"),
   userReplyToTicket
 );
+
+router.get("/profile",protect,myProfile)
 
 module.exports = router;
