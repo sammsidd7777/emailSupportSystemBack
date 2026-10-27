@@ -102,38 +102,47 @@ const getAgentTicketById = async (req, res, next) => {
       return next(new AppError("Agent not found.", 404));
     }
 
-    // Debug: check ticket and assigned agent
+    // Find ticket
     const ticketById = await TICKET.findById(ticketId);
-
-    console.log("Logged-in agent:", String(agent._id));
-    console.log("Ticket found:", Boolean(ticketById));
-    console.log(
-      "Assigned agent:",
-      ticketById?.AssignedTo
-        ? String(ticketById.AssignedTo._id || ticketById.AssignedTo)
-        : null
-    );
 
     if (!ticketById) {
       return next(new AppError("Ticket not found.", 404));
     }
 
-    const assignedAgentId =
-      ticketById.AssignedTo?._id || ticketById.AssignedTo;
+    // Verify ticket assignment
+    const assignedAgentId = ticketById.AssignedTo?._id
+      ? ticketById.AssignedTo._id
+      : ticketById.AssignedTo;
 
-    if (!assignedAgentId || String(assignedAgentId) !== String(agent._id)) {
+    if (
+      !assignedAgentId ||
+      String(assignedAgentId) !== String(agent._id)
+    ) {
       return next(
         new AppError("Ticket is not assigned to this agent.", 403)
       );
     }
 
+    // Fetch ticket details
     const ticket = await TICKET.findById(ticketId)
-      .populate("Messages")
-      .populate("AssignedTo", "Name Email Role");
+      .populate("AssignedTo", "Name Email Role")
+      .lean();
 
+    // Fetch messages from separate collection
+    const messages = await TICKETMESSAGE.find({
+      TicketId: ticket._id,
+    })
+      .sort({ createdAt: 1 })
+      .lean();
+
+    // Return ticket with messages
     return res.status(200).json({
       success: true,
-      ticket,
+      message: "Ticket fetched successfully.",
+      ticket: {
+        ...ticket,
+        Messages: messages,
+      },
     });
   } catch (error) {
     return next(error);
