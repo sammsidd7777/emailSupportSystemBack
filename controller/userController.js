@@ -544,7 +544,7 @@ const updatePassword = async (req, res, next) => {
   }
 };
 
-module.exports = {  };
+
 
 
 module.exports = { userReplyToTicket,myProfile,updateProfile,updateEmail,verifyEmailOtp,updatePassword };

@@ -102,46 +102,33 @@ const getAgentTicketById = async (req, res, next) => {
       return next(new AppError("Agent not found.", 404));
     }
 
-    // Find ticket
-    const ticketById = await TICKET.findById(ticketId);
+    const ticket = await TICKET.findById(ticketId)
+      .populate("AssignedTo", "Name Email Role")
+      .lean();
 
-    if (!ticketById) {
+    if (!ticket) {
       return next(new AppError("Ticket not found.", 404));
     }
 
-    // Verify ticket assignment
-    const assignedAgentId = ticketById.AssignedTo?._id
-      ? ticketById.AssignedTo._id
-      : ticketById.AssignedTo;
+    const assignedAgentId = ticket.AssignedTo?._id || ticket.AssignedTo;
 
-    if (
-      !assignedAgentId ||
-      String(assignedAgentId) !== String(agent._id)
-    ) {
+    if (!assignedAgentId || String(assignedAgentId) !== String(agent._id)) {
       return next(
         new AppError("Ticket is not assigned to this agent.", 403)
       );
     }
 
-    // Fetch ticket details
-    const ticket = await TICKET.findById(ticketId)
-      .populate("AssignedTo", "Name Email Role")
-      .lean();
-
-    // Fetch messages from separate collection
-    const messages = await TICKETMESSAGE.find({
+    // Find the message document and its nested Messages array
+    const ticketMessage = await TICKETMESSAGE.findOne({
       TicketId: ticket._id,
-    })
-      .sort({ createdAt: 1 })
-      .lean();
+    }).lean();
 
-    // Return ticket with messages
     return res.status(200).json({
       success: true,
       message: "Ticket fetched successfully.",
       ticket: {
         ...ticket,
-        Messages: messages,
+        Messages: ticketMessage?.Messages || [],
       },
     });
   } catch (error) {
@@ -157,6 +144,9 @@ const replyToTicketByAgent = async (req, res, next) => {
     const { ticketId } = req.params;
     const { message } = req.body;
     const agentId = req.user?._id;
+
+
+    console.log(ticketId , message ,agentId ,"data come")
 
     if (!agentId) {
       return next(new AppError("Authentication required.", 401));

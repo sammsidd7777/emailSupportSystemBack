@@ -41,15 +41,20 @@ const createTicket = async (req, res, next) => {
       Status: "open",
     });
 
-    const newMessage = await TICKETMESSAGE.create({
-      TicketId: ticket._id,
-      SourceSenderId: req.user._id,
+ const newMessage = await TICKETMESSAGE.create({
+  TicketId: ticket._id,
+  TicketNumber: ticket.TicketNumber,
+  Messages: [
+    {
+      SenderId: req.user._id,
       SenderEmail: req.user.Email,
       SenderRole: req.user.Role,
       Body: Description,
       Source: "web",
       Type: "public",
-    });
+    },
+  ],
+});
 
     // 5. Send response
     return res.status(201).json({
