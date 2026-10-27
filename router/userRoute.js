@@ -2,7 +2,7 @@
 
 const express = require("express");
 const { authorize, protect } = require("../middleware/authMiddleware");
-const { myProfile, updateProfile, updateEmail, verifyEmailOtp } = require("../controller/userController");
+const { myProfile, updateProfile, updateEmail, verifyEmailOtp, userReplyToTicket } = require("../controller/userController");
 const router = express.Router();
 
 
