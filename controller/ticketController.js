@@ -3,6 +3,8 @@ const USER = require("../module/userSchema");
 const TICKET = require("../module/ticketSchema");
 const sendTestEmail = require("../testEmail");
 const TICKETMESSAGE = require("../module/ticketMessageSchema");
+const mongoose = require("mongoose");
+
 
 const createTicket = async (req, res, next) => {
   try {
@@ -101,6 +103,8 @@ const myTicketList = async (req, res, next) => {
 };
 
 
+
+
 const getTicketById = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -109,31 +113,26 @@ const getTicketById = async (req, res, next) => {
       return next(new AppError("Invalid ticket ID", 400));
     }
 
-    const ticket = await TICKET.findById(id);
+    const ticket = await TICKET.findById(id)
+      .populate({
+        path: "Messages",
+      })
+      .lean();
 
     if (!ticket) {
       return next(new AppError("Ticket not found", 404));
     }
 
-    // Fetch the existing conversation from MongoDB
-    const conversation = await TICKETMESSAGE.findOne({
-      TicketId: ticket._id,
-    });
-
-    // Attach the message array to the ticket response
-    const ticketData = ticket.toObject();
-
-    ticketData.Messages = conversation?.Messages || [];
-
     return res.status(200).json({
       success: true,
       message: "Ticket fetched successfully",
-      ticket: ticketData,
+      ticket,
     });
   } catch (error) {
     next(error);
   }
 };
+
 
 const assignTicket = async (req, res, next) => {
   try {
