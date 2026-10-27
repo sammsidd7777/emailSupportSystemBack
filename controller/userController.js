@@ -12,31 +12,38 @@ const sendEmail = require("../utils/email.js");
 
 
 
+
+
 const userReplyToTicket = async (req, res, next) => {
   try {
     const { ticketId } = req.params;
     const { message } = req.body;
     const userId = req.user?._id;
 
-    // 1. Authentication check
+    // 1. Authentication
     if (!userId) {
       return next(new AppError("Authentication required.", 401));
     }
 
     // 2. Validate message
     if (typeof message !== "string" || !message.trim()) {
-      return next(new AppError("Reply message is required.", 400));
+      return next(
+        new AppError("Reply message is required.", 400)
+      );
     }
 
-    // 3. Find ticket belonging to this customer
+    // 3. Find customer's ticket
     const ticket = await TICKET.findOne({
       _id: ticketId,
-      RequesterId: userId, // Apne Ticket schema ka actual field name use karein
+      RequesterId: userId,
     });
 
     if (!ticket) {
       return next(
-        new AppError("Ticket not found or you do not own this ticket.", 404)
+        new AppError(
+          "Ticket not found or you do not own this ticket.",
+          404
+        )
       );
     }
 
@@ -47,11 +54,14 @@ const userReplyToTicket = async (req, res, next) => {
       )
     ) {
       return next(
-        new AppError("Cannot reply to a closed or resolved ticket.", 400)
+        new AppError(
+          "Cannot reply to a closed or resolved ticket.",
+          400
+        )
       );
     }
 
-    // 5. Find existing conversation
+    // 5. Find conversation
     const conversation = await TICKETMESSAGE.findOne({
       TicketId: ticket._id,
     });
@@ -62,10 +72,31 @@ const userReplyToTicket = async (req, res, next) => {
       );
     }
 
-    // 6. Add message to the existing conversation
+    // 6. Check whether an agent is assigned
+    const assignedAgentId = ticket.AssignedTo;
+
+    // If no agent is assigned, allow only one customer message
+    if (!assignedAgentId) {
+      const existingCustomerMessages = conversation.Messages.filter(
+        (msg) =>
+          msg.SenderRole === "customer" &&
+          msg.Type === "public"
+      );
+
+      if (existingCustomerMessages.length >= 1) {
+        return next(
+          new AppError(
+            "No support agent is assigned yet. You can send only one message until an agent is assigned.",
+            400
+          )
+        );
+      }
+    }
+
+    // 7. Save customer message
     conversation.Messages.push({
       SenderId: userId,
-      SenderEmail: req.user.Email, // Apne User schema ke field ke according
+      SenderEmail: req.user.Email,
       SenderRole: "customer",
       Body: message.trim(),
       Source: "web",
@@ -74,16 +105,102 @@ const userReplyToTicket = async (req, res, next) => {
 
     await conversation.save();
 
-    // 7. Response
+    // 8. Notify assigned agent by email
+    let emailStatus = "not_sent";
+
+    if (assignedAgentId) {
+      try {
+        const agent = await USER.findById(assignedAgentId).select(
+          "Name Email"
+        );
+
+        if (agent?.Email) {
+          const ticketNumber =
+            ticket.TicketNumber ||
+            conversation.TicketNumber ||
+            String(ticket._id);
+
+          const escapeHtml = (value = "") =>
+            String(value)
+              .replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;")
+              .replace(/"/g, "&quot;")
+              .replace(/'/g, "&#039;");
+
+          await sendEmail({
+            to: agent.Email,
+            subject: `New customer reply - Ticket ${ticketNumber}`,
+
+            text: `
+Hello ${agent.Name || "Support Agent"},
+
+The customer has replied to a ticket assigned to you.
+
+Ticket: ${ticketNumber}
+Subject: ${ticket.Subject || "Support Ticket"}
+Customer: ${req.user.Name || req.user.Email}
+
+Customer message:
+${message.trim()}
+
+Please log in to BitMax Support to respond.
+            `.trim(),
+
+            html: `
+              <div style="font-family:Arial,sans-serif;background:#f3f4f6;padding:24px;color:#1f2937;">
+                <div style="max-width:600px;margin:auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
+                  <div style="background:#111827;padding:22px;text-align:center;">
+                    <h2 style="margin:0;color:#f5c451;">BitMax Support</h2>
+                    <p style="color:#fff;margin-bottom:0;">New Customer Reply</p>
+                  </div>
+
+                  <div style="padding:24px;">
+                    <p>Hello ${escapeHtml(agent.Name || "Support Agent")},</p>
+                    <p>A customer has replied to a ticket assigned to you.</p>
+
+                    <p><strong>Ticket:</strong> ${escapeHtml(ticketNumber)}</p>
+                    <p><strong>Subject:</strong> ${escapeHtml(ticket.Subject || "Support Ticket")}</p>
+                    <p><strong>Customer:</strong> ${escapeHtml(req.user.Name || req.user.Email || "Customer")}</p>
+
+                    <h3>Customer Message</h3>
+                    <div style="padding:16px;background:#fffbeb;border-left:4px solid #d4a72c;border-radius:6px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;">${escapeHtml(message.trim())}</div>
+
+                    <p style="margin-top:24px;">Please log in to your support dashboard to respond.</p>
+                    <p>Regards,<br/><strong>BitMax Support Team</strong></p>
+                  </div>
+                </div>
+              </div>
+            `,
+          });
+
+          emailStatus = "sent";
+        } else {
+          emailStatus = "agent_email_missing";
+        }
+      } catch (emailError) {
+        emailStatus = "failed";
+        console.error(
+          "Customer reply email to agent failed:",
+          emailError.message
+        );
+      }
+    }
+
+    // 9. Response
     return res.status(201).json({
       success: true,
       message: "Your reply has been added successfully.",
       data: conversation,
+      emailStatus,
     });
   } catch (error) {
     return next(error);
   }
 };
+
+
+
 const myProfile = async (req, res) => {
   try {
     const id = req?.user?._id;

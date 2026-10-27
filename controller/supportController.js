@@ -141,14 +141,13 @@ const getAgentTicketById = async (req, res, next) => {
 
 // 3. Reply to an assigned ticket
  
+
+
 const replyToTicketByAgent = async (req, res, next) => {
   try {
     const { ticketId } = req.params;
     const { message } = req.body;
     const agentId = req.user?._id;
-
-
-    console.log(ticketId , message ,agentId ,"data come")
 
     if (!agentId) {
       return next(new AppError("Authentication required.", 401));
@@ -169,18 +168,21 @@ const replyToTicketByAgent = async (req, res, next) => {
       );
     }
 
-    if (["resolved", "closed"].includes(
-      String(ticket.Status || "").toLowerCase()
-    )) {
+    if (
+      ["resolved", "closed"].includes(
+        String(ticket.Status || "").toLowerCase()
+      )
+    ) {
       return next(
-        new AppError("Cannot reply to a closed or resolved ticket.", 400)
+        new AppError(
+          "Cannot reply to a closed or resolved ticket.",
+          400
+        )
       );
     }
 
-    // Find the existing conversation for this ticket
     const conversation = await TICKETMESSAGE.findOne({
       TicketId: ticket._id,
-      
     });
 
     if (!conversation) {
@@ -189,10 +191,10 @@ const replyToTicketByAgent = async (req, res, next) => {
       );
     }
 
-    // Add reply to the existing document
+    // Save the agent's reply first
     conversation.Messages.push({
       SenderId: agentId,
-      SenderEmail: req.user.Email, // Use your actual User email field
+      SenderEmail: req.user.Email,
       SenderRole: "supportAgent",
       Body: message.trim(),
       Source: "web",
@@ -201,10 +203,130 @@ const replyToTicketByAgent = async (req, res, next) => {
 
     await conversation.save();
 
+    // Send email notification to customer
+    let emailStatus = "sent";
+
+    try {
+      if (!ticket.RequesterEmail) {
+        throw new Error("Customer email is missing");
+      }
+
+      const escapeHtml = (value = "") =>
+        String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+
+      const frontendUrl = process.env.CLIENT_URL?.replace(/\/+$/, "");
+
+      const ticketUrl = frontendUrl
+        ? `${frontendUrl}/user/tickets/${ticket._id}`
+        : "";
+
+      const ticketNumber =
+        ticket.TicketNumber || conversation.TicketNumber || ticket._id;
+
+      await sendEmail({
+        to: ticket.RequesterEmail,
+        subject: `New reply on ticket ${ticketNumber}`,
+        text: `
+Hello ${ticket.RequesterName || "Customer"},
+
+Your support agent has replied to your ticket.
+
+Ticket: ${ticketNumber}
+Subject: ${ticket.Subject || "Support Ticket"}
+
+Agent's reply:
+${message.trim()}
+
+${ticketUrl ? `View your ticket: ${ticketUrl}` : ""}
+
+Regards,
+BitMax Support Team
+        `.trim(),
+
+        html: `
+          <div style="margin:0;padding:25px 12px;background:#f3f4f6;font-family:Arial,sans-serif;color:#1f2937;">
+            <div style="max-width:600px;margin:auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
+
+              <div style="background:#111827;padding:25px;text-align:center;">
+                <h1 style="margin:0;color:#f5c451;">BitMax Support</h1>
+                <p style="margin:8px 0 0;color:#ffffff;">New Ticket Reply</p>
+              </div>
+
+              <div style="padding:26px;">
+                <h2 style="margin-top:0;">
+                  Hello ${escapeHtml(ticket.RequesterName || "Customer")}!
+                </h2>
+
+                <p style="font-size:15px;line-height:1.7;color:#4b5563;">
+                  Your support agent has replied to your ticket.
+                </p>
+
+                <div style="padding:15px;background:#fffbeb;border:1px solid #f3df9b;border-radius:9px;">
+                  <p style="margin:5px 0;">
+                    <strong>Ticket:</strong> ${escapeHtml(ticketNumber)}
+                  </p>
+                  <p style="margin:5px 0;">
+                    <strong>Subject:</strong> ${escapeHtml(ticket.Subject || "Support Ticket")}
+                  </p>
+                </div>
+
+                <h3 style="margin:25px 0 12px;">Agent's Reply</h3>
+
+                <div style="padding:18px;background:#f9fafb;border-left:4px solid #d4a72c;border-radius:6px;">
+                  <p style="margin:0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;color:#374151;">${escapeHtml(message.trim())}</p>
+                </div>
+
+                ${
+                  ticketUrl
+                    ? `
+                      <div style="text-align:center;margin:28px 0;">
+                        <a href="${escapeHtml(ticketUrl)}"
+                           style="display:inline-block;padding:13px 24px;background:#d4a72c;color:#111827;text-decoration:none;font-weight:bold;border-radius:7px;">
+                          View Ticket Conversation
+                        </a>
+                      </div>
+                    `
+                    : ""
+                }
+
+                <p style="font-size:14px;line-height:1.7;color:#6b7280;">
+                  You can log in to your account to view the conversation and continue communicating with our support team.
+                </p>
+
+                <p>Regards,<br /><strong>BitMax Support Team</strong></p>
+              </div>
+
+              <div style="padding:15px;text-align:center;background:#f9fafb;border-top:1px solid #e5e7eb;">
+                <p style="margin:0;font-size:12px;color:#9ca3af;">
+                  Automated notification from BitMax Support.
+                </p>
+              </div>
+
+            </div>
+          </div>
+        `,
+      });
+
+      console.log("Agent reply email sent:", ticket.RequesterEmail);
+    } catch (emailError) {
+      emailStatus = "failed";
+
+      console.error(
+        "Agent reply email failed:",
+        emailError.message
+      );
+    }
+
     return res.status(201).json({
       success: true,
       message: "Reply added successfully.",
       data: conversation,
+      emailStatus,
     });
   } catch (error) {
     return next(error);
