@@ -1,84 +1,80 @@
-const mongoose = require("mongoose")
+const mongoose = require("mongoose");
 
-
-const userSchema = new mongoose.Schema({
-
+const userSchema = new mongoose.Schema(
+  {
     Name: {
-        type: String,
-        required: true
+      type: String,
+      required: true,
     },
     Email: {
-        type: String,
-        required: true,
-        unique: true,
-        lowercase: true
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
     },
     Phone: {
-        type: Number,
-        required: true
+      type: Number,
+      required: true,
     },
     PasswordHash: {
-        type: String,
-        required: true
+      type: String,
+      required: true,
     },
-Role: {
-  type: String,
-  enum: ["customer", "supportAgent", "admin"],
-  default: "customer",
-},
+    Role: {
+      type: String,
+      enum: ["customer", "supportAgent", "admin"],
+      default: "customer",
+    },
 
-AgentRole: {
-  type: String,
-  enum: ["support", "general", "support"],
-  default: "general",
-},
+    AgentRole: {
+      type: String,
+      enum: ["support", "general", "support"],
+      default: "general",
+    },
     IsVerified: {
-        type: Boolean,
-        default: false
+      type: Boolean,
+      default: false,
     },
     OtpHash: {
-        type: String,
-        default: null
+      type: String,
+      default: null,
     },
- 
 
-OtpPurpose: {
-  type: String,
-  enum: ["login", "reset-password", null],
-  default: null,
-},
+    OtpPurpose: {
+      type: String,
+      enum: ["login", "reset-password", null],
+      default: null,
+    },
     OtpExpiresAt: {
-        type: Date,
-        default: null
+      type: Date,
+      default: null,
     },
     RefreshToken: {
-        type: String,
-        default: null
+      type: String,
+      default: null,
     },
 
     PendingEmail: {
-  type: String,
-  default: null,
-  lowercase: true
-},
-EmailOtpHash: {
-  type: String,
-  default: null
-},
-EmailOtpExpiresAt: {
-  type: Date,
-  default: null
-},
-EmailOtpAttempts: {
-  type: Number,
-  default: 0
-}
+      type: String,
+      default: null,
+      lowercase: true,
+    },
+    EmailOtpHash: {
+      type: String,
+      default: null,
+    },
+    EmailOtpExpiresAt: {
+      type: Date,
+      default: null,
+    },
+    EmailOtpAttempts: {
+      type: Number,
+      default: 0,
+    },
+  },
+  {
+    timestemp: true,
+  },
+);
 
-},
-    {
-        timestemp: true
-    }
-
-)
-
-module.exports = mongoose.model("USER", userSchema)
+module.exports = mongoose.model("USER", userSchema);

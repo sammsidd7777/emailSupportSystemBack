@@ -2,7 +2,7 @@
 
 const express = require("express");
 const { authorize, protect } = require("../middleware/authMiddleware");
-const { myProfile, updateProfile, updateEmail, verifyEmailOtp, userReplyToTicket } = require("../controller/userController");
+const { myProfile, updateProfile, updateEmail, verifyEmailOtp, userReplyToTicket, updatePassword } = require("../controller/userController");
 const router = express.Router();
 
 
@@ -33,6 +33,8 @@ router.post("/profile/email/change-request", protect, updateEmail);
 
 // Verify OTP and update email
 router.post("/profile/email/verify-otp", protect, verifyEmailOtp);
+
+router.patch("/profile/password/change",protect,updatePassword)
 
 
 

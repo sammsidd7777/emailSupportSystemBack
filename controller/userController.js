@@ -470,4 +470,81 @@ const verifyEmailOtp = async (req, res, next) => {
 };
 
 
-module.exports = { userReplyToTicket,myProfile,updateProfile,updateEmail,verifyEmailOtp };
+
+
+const updatePassword = async (req, res, next) => {
+  try {
+    const id = req.user?._id;
+    const { currentPassword, newPassword } = req.body;
+
+    if (!id) {
+      return res.status(401).json({
+        success: false,
+        message: "Please login first",
+      });
+    }
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Current password and new password are required",
+      });
+    }
+
+    if (typeof newPassword !== "string" || newPassword.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must be at least 8 characters long",
+      });
+    }
+
+    const user = await USER.findById(id).select("+PasswordHash");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const isPasswordValid = await bcrypt.compare(
+      currentPassword,
+      user.PasswordHash
+    );
+
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        message: "Incorrect current password",
+      });
+    }
+
+    const isSamePassword = await bcrypt.compare(
+      newPassword,
+      user.PasswordHash
+    );
+
+    if (isSamePassword) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must be different from current password",
+      });
+    }
+
+    user.PasswordHash = await bcrypt.hash(newPassword, 12);
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Password updated successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = {  };
+
+
+module.exports = { userReplyToTicket,myProfile,updateProfile,updateEmail,verifyEmailOtp,updatePassword };
