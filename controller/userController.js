@@ -194,41 +194,65 @@ const updateProfile = async (req, res, next) => {
 
 
 const updateEmail = async (req, res, next) => {
+  const requestId = `UPDATE_EMAIL_${Date.now()}`;
+
   try {
+    console.log(`[${requestId}] STEP 1: Request received`);
+
     const id = req?.user?._id;
     const { newEmail, password } = req.body;
 
-    // Check authentication
+    console.log(`[${requestId}] STEP 2: Request data checked`, {
+      userId: id ? String(id) : null,
+      hasNewEmail: Boolean(newEmail),
+      hasPassword: Boolean(password),
+    });
+
+    // Authentication
     if (!id) {
+      console.log(`[${requestId}] ERROR: User not authenticated`);
+
       return res.status(401).json({
         success: false,
         message: "Please login first",
       });
     }
 
-    // Validate required fields
+    // Required fields
     if (!newEmail || !password) {
+      console.log(`[${requestId}] ERROR: Missing required fields`);
+
       return res.status(400).json({
         success: false,
         message: "New email and password are required",
       });
     }
 
-    // Normalize email
     const normalizedEmail = newEmail.trim().toLowerCase();
 
-    // Validate email format
+    console.log(`[${requestId}] STEP 3: Email normalized`);
+
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!emailRegex.test(normalizedEmail)) {
+      console.log(`[${requestId}] ERROR: Invalid email format`);
+
       return res.status(400).json({
         success: false,
         message: "Please enter a valid email address",
       });
     }
 
-    // Find authenticated user
+    console.log(`[${requestId}] STEP 4: Email format valid`);
+
+    // MongoDB: Find user
+    console.log(`[${requestId}] STEP 5: Before USER.findById`);
+
     const user = await USER.findById(id);
+
+    console.log(`[${requestId}] STEP 6: After USER.findById`, {
+      userFound: Boolean(user),
+    });
 
     if (!user) {
       return res.status(404).json({
@@ -237,11 +261,17 @@ const updateEmail = async (req, res, next) => {
       });
     }
 
-    // Verify current password
+    // Password verification
+    console.log(`[${requestId}] STEP 7: Before bcrypt.compare`);
+
     const isPasswordValid = await bcrypt.compare(
       password,
       user.PasswordHash
     );
+
+    console.log(`[${requestId}] STEP 8: After bcrypt.compare`, {
+      isPasswordValid,
+    });
 
     if (!isPasswordValid) {
       return res.status(401).json({
@@ -250,18 +280,26 @@ const updateEmail = async (req, res, next) => {
       });
     }
 
-    // Check whether email is already current email
-    if (normalizedEmail === user.Email.toLowerCase()) {
+    // Check current email
+    console.log(`[${requestId}] STEP 9: Checking current email`);
+
+    if (normalizedEmail === user.Email?.trim().toLowerCase()) {
       return res.status(400).json({
         success: false,
         message: "This is already your current email",
       });
     }
 
-    // Check whether email is already registered
+    // Check duplicate email
+    console.log(`[${requestId}] STEP 10: Before USER.findOne`);
+
     const existingUser = await USER.findOne({
       Email: normalizedEmail,
       _id: { $ne: user._id },
+    });
+
+    console.log(`[${requestId}] STEP 11: After USER.findOne`, {
+      emailAlreadyRegistered: Boolean(existingUser),
     });
 
     if (existingUser) {
@@ -271,68 +309,99 @@ const updateEmail = async (req, res, next) => {
       });
     }
 
-    // Generate secure 6-digit OTP
-    const otp =  generateOTP();
+    // Generate OTP
+    console.log(`[${requestId}] STEP 12: Before generateOTP`);
 
-    // Hash OTP before storing it
+    const otp = generateOTP();
+
+    console.log(`[${requestId}] STEP 13: OTP generated`);
+
+    // Hash OTP
+    console.log(`[${requestId}] STEP 14: Before OTP hashing`);
+
     const otpHash = crypto
       .createHash("sha256")
       .update(otp)
       .digest("hex");
 
-    // Save pending email and OTP details
+    console.log(`[${requestId}] STEP 15: OTP hashing completed`);
+
+    // Save pending email
     user.PendingEmail = normalizedEmail;
     user.EmailOtpHash = otpHash;
     user.EmailOtpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
     user.EmailOtpAttempts = 0;
 
+    console.log(`[${requestId}] STEP 16: Before user.save`);
+
     await user.save();
 
-    // Send OTP to the new email address
+    console.log(`[${requestId}] STEP 17: After user.save`);
+
+    // Send OTP email
+    console.log(`[${requestId}] STEP 18: Before transporter.sendMail`);
+
     try {
-      await transporter.sendMail({
+      const mailResult = await transporter.sendMail({
         from: process.env.EMAIL_FROM,
         to: normalizedEmail,
         subject: "Verify Your New Email - BitMax",
-
         text: `Your BitMax email verification OTP is ${otp}. It expires in 5 minutes.`,
-
         html: `
-          <div style="font-family: Arial, sans-serif; max-width: 500px; margin: auto; padding: 24px; border: 1px solid #e5e7eb; border-radius: 12px;">
+          <div style="font-family: Arial, sans-serif; padding: 24px;">
             <h2 style="color: #D4AF37;">Verify Your New Email</h2>
-
-            <p>Your BitMax email verification code is:</p>
-
+            <p>Your BitMax verification code is:</p>
             <h1 style="letter-spacing: 8px; color: #D4AF37;">
               ${otp}
             </h1>
-
             <p>This code expires in 5 minutes.</p>
-
-            <p style="color: #666; font-size: 13px;">
-              If you did not request this change, please secure your account.
-            </p>
           </div>
         `,
       });
+
+      console.log(`[${requestId}] STEP 19: Email sent successfully`, {
+        acceptedCount: mailResult.accepted?.length ?? 0,
+        rejectedCount: mailResult.rejected?.length ?? 0,
+        messageId: mailResult.messageId,
+      });
     } catch (mailError) {
-      // Clear OTP details if email delivery fails
+      console.error(`[${requestId}] ERROR: Email sending failed`, {
+        name: mailError.name,
+        code: mailError.code,
+        command: mailError.command,
+        message: mailError.message,
+      });
+
+      // Clear pending OTP if email delivery fails
       user.PendingEmail = null;
       user.EmailOtpHash = null;
       user.EmailOtpExpiresAt = null;
       user.EmailOtpAttempts = 0;
 
+      console.log(`[${requestId}] STEP 20: Before cleanup save`);
+
       await user.save();
+
+      console.log(`[${requestId}] STEP 21: Cleanup save completed`);
 
       throw mailError;
     }
+
+    console.log(`[${requestId}] STEP 22: Sending success response`);
 
     return res.status(200).json({
       success: true,
       message: "OTP sent to your new email. Please verify it.",
     });
   } catch (error) {
-    next(error);
+    console.error(`[${requestId}] FINAL ERROR`, {
+      name: error.name,
+      message: error.message,
+      code: error.code,
+      stack: error.stack,
+    });
+
+    return next(error);
   }
 };
 
