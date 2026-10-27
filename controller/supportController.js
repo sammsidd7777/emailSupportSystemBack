@@ -5,6 +5,8 @@ const AppError = require("../utils/AppError");
 const TICKETMESSAGE = require("../module/ticketMessageSchema");
 const mongoose = require("mongoose");
 
+const sendEmail = require("../utils/email");
+
 
 // 1. Get tickets assigned to the logged-in agent
  const getMyAssignedTickets = async (req, res, next) => {
@@ -210,17 +212,29 @@ const replyToTicketByAgent = async (req, res, next) => {
 };
 
 // 4. Update status of an assigned ticket
- const updateTicketStatus = async (req, res, next) => {
+
+const sendEmail = require("../utils/email");
+
+const escapeHtml = (value = "") =>
+  String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+
+
+const updateTicketStatus = async (req, res, next) => {
   try {
     const { ticketId } = req.params;
     const { status } = req.body;
     const agentId = req.user?._id;
 
-    console.log(ticketId, status, agentId, "updateTicketStatus params");
-
     if (!agentId) {
       return next(new AppError("Authentication required.", 401));
     }
+
+    const normalizedStatus = String(status || "").toLowerCase().trim();
 
     const allowedStatuses = [
       "open",
@@ -229,13 +243,10 @@ const replyToTicketByAgent = async (req, res, next) => {
       "closed",
     ];
 
-    if (
-      typeof status !== "string" ||
-      !allowedStatuses.includes(status.toLowerCase())
-    ) {
+    if (!allowedStatuses.includes(normalizedStatus)) {
       return next(
         new AppError(
-          "Invalid status. Use open, in progress, or resolved.",
+          "Invalid status. Use open, progress, resolved, or closed.",
           400
         )
       );
@@ -252,19 +263,170 @@ const replyToTicketByAgent = async (req, res, next) => {
       );
     }
 
-    ticket.Status = status.toLowerCase();
+    const previousStatus = String(ticket.Status || "").toLowerCase();
 
+    // Email only on the first transition to resolved or closed
+    const shouldSendEmail =
+      ["resolved", "closed"].includes(normalizedStatus) &&
+      !["resolved", "closed"].includes(previousStatus);
+
+    // Save status first
+    ticket.Status = normalizedStatus;
     await ticket.save();
+
+    let emailStatus = "not_required";
+
+    if (shouldSendEmail) {
+      try {
+        if (!ticket.RequesterEmail) {
+          throw new Error("Customer email is missing");
+        }
+
+        // Fetch ticket conversation
+        const ticketConversation = await TICKETMESSAGE.findOne({
+          TicketId: ticket._id,
+        }).lean();
+
+        const messages = (ticketConversation?.Messages || []).filter(
+          (message) => message.Type !== "internal"
+        );
+
+        const escapeHtml = (value = "") =>
+          String(value)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+
+        const chatHtml = messages.length
+          ? messages
+              .map((message) => {
+                const sender = message.SenderRole || "Support";
+                const body = message.Body || "";
+                const date = message.createdAt
+                  ? new Date(message.createdAt).toLocaleString("en-IN", {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                      timeZone: "Asia/Kolkata",
+                    })
+                  : "";
+
+                return `
+                  <div style="padding:14px;margin:12px 0;border:1px solid #e5e7eb;border-radius:10px;background:#ffffff;">
+                    <div style="font-weight:bold;color:#a07814;font-size:13px;">
+                      ${escapeHtml(sender)}
+                    </div>
+                    <div style="margin-top:8px;color:#374151;line-height:1.7;white-space:pre-wrap;overflow-wrap:anywhere;">
+                      ${escapeHtml(body)}
+                    </div>
+                    <div style="margin-top:10px;color:#9ca3af;font-size:11px;">
+                      ${escapeHtml(date)}
+                    </div>
+                    <div style="margin-top:5px;color:#9ca3af;font-size:11px;">
+                      Source: ${escapeHtml(message.Source || "web")}
+                    </div>
+                  </div>
+                `;
+              })
+              .join("")
+          : `<p style="color:#6b7280;">No public messages were found for this ticket.</p>`;
+
+        const ticketNumber = ticket.TicketNumber || ticket._id;
+        const subject = ticket.Subject || "Support Ticket";
+        const frontendUrl = process.env.CLIENT_URL?.replace(/\/+$/, "");
+        const ticketUrl = frontendUrl
+          ? `${frontendUrl}/user/tickets/${ticket._id}`
+          : "";
+
+        await sendEmail({
+          to: ticket.RequesterEmail,
+          subject: `Ticket ${ticketNumber} ${normalizedStatus}`,
+          text: [
+            `Your ticket "${subject}" has been ${normalizedStatus}.`,
+            `Ticket Number: ${ticketNumber}`,
+            `Chat messages included: ${messages.length}`,
+            ticketUrl ? `View ticket: ${ticketUrl}` : "",
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
+
+          html: `
+            <div style="margin:0;padding:25px 12px;background:#f3f4f6;font-family:Arial,sans-serif;color:#1f2937;">
+              <div style="max-width:650px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
+
+                <div style="background:#111827;padding:25px;text-align:center;">
+                  <h1 style="margin:0;color:#f5c451;">BitMax Support</h1>
+                  <p style="margin:8px 0 0;color:#ffffff;">Ticket Status Update</p>
+                </div>
+
+                <div style="padding:25px;">
+                  <h2>Your ticket has been ${escapeHtml(normalizedStatus)}</h2>
+
+                  <p><strong>Ticket:</strong> ${escapeHtml(ticketNumber)}</p>
+                  <p><strong>Subject:</strong> ${escapeHtml(subject)}</p>
+                  <p><strong>Status:</strong> ${escapeHtml(normalizedStatus.toUpperCase())}</p>
+
+                  <hr style="border:0;border-top:1px solid #e5e7eb;margin:24px 0;" />
+
+                  <h3>Conversation History</h3>
+                  <p style="color:#6b7280;font-size:13px;">
+                    ${messages.length} public message(s), oldest to newest.
+                  </p>
+
+                  ${chatHtml}
+
+                  ${
+                    ticketUrl
+                      ? `
+                        <div style="text-align:center;margin:28px 0;">
+                          <a href="${escapeHtml(ticketUrl)}"
+                             style="display:inline-block;padding:13px 22px;background:#d4a72c;color:#111827;text-decoration:none;font-weight:bold;border-radius:7px;">
+                            View Ticket
+                          </a>
+                        </div>
+                      `
+                      : ""
+                  }
+
+                  <p style="color:#6b7280;line-height:1.7;">
+                    Thank you for contacting BitMax Support. Please keep this
+                    email for your records.
+                  </p>
+
+                  <p>Regards,<br /><strong>BitMax Support Team</strong></p>
+                </div>
+
+                <div style="padding:15px;text-align:center;background:#f9fafb;border-top:1px solid #e5e7eb;">
+                  <p style="margin:0;font-size:12px;color:#9ca3af;">
+                    Automated notification from BitMax Support.
+                  </p>
+                </div>
+              </div>
+            </div>
+          `,
+        });
+
+        emailStatus = "sent";
+        console.log("Ticket history email sent:", ticket.RequesterEmail);
+      } catch (emailError) {
+        emailStatus = "failed";
+        console.error("Ticket history email failed:", emailError.message);
+      }
+    }
 
     return res.status(200).json({
       success: true,
       message: "Ticket status updated successfully.",
       ticket,
+      emailStatus,
     });
   } catch (error) {
     return next(error);
   }
 };
+
+
 
 // 5. Get logged-in agent profile
  const getAgentProfile = async (req, res, next) => {

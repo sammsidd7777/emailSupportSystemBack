@@ -1,5 +1,7 @@
 const TICKET = require("../module/ticketSchema");
 const USER = require("../module/userSchema")
+const sendEmail = require("../utils/email");
+
 
 const adminDashboard = async (req, res, next) => {
   try {
@@ -93,18 +95,139 @@ const adminDashboard = async (req, res, next) => {
   }
 };
 
+
 const makeAgent = async (req, res, next) => {
   try {
     const { userId } = req.params;
+
     const user = await USER.findById(userId);
+
     if (!user) {
       return next(new AppError("User not found", 404));
     }
+
+    // Check if already a support agent
+    if (user.Role === "supportAgent") {
+      return res.status(200).json({
+        success: true,
+        message: "User is already a support agent",
+      });
+    }
+
+    // Update role
     user.Role = "supportAgent";
     await user.save();
+
+    // Send promotion email without failing the role update
+    let emailStatus = "sent";
+
+    try {
+      if (!user.Email) {
+        throw new Error("User email is missing");
+      }
+
+      const frontendUrl = process.env.CLIENT_URL?.replace(/\/+$/, "");
+      const dashboardUrl = frontendUrl
+        ? `${frontendUrl}/agent/dashboard`
+        : "";
+
+      await sendEmail({
+        to: user.Email,
+        subject: "Congratulations! You are now a Support Agent",
+        text: `Hi ${user.Name || "there"},
+
+Congratulations! Your account has been promoted to Support Agent at BitMax Support.
+
+You can now log in to your account and access your support agent dashboard.
+
+${dashboardUrl ? `Agent Dashboard: ${dashboardUrl}` : ""}
+
+Thank you,
+BitMax Support Team`,
+        html: `
+          <div style="margin:0;padding:30px 12px;background:#f4f5f7;font-family:Arial,sans-serif;color:#222;">
+            <div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e5e7eb;">
+
+              <div style="background:#111111;padding:28px 24px;text-align:center;">
+                <h1 style="margin:0;color:#f5c451;font-size:25px;">
+                  BitMax Support
+                </h1>
+                <p style="margin:8px 0 0;color:#ffffff;font-size:13px;">
+                  Support Team Notification
+                </p>
+              </div>
+
+              <div style="padding:32px 26px;">
+                <h2 style="margin:0 0 16px;color:#202020;">
+                  Congratulations, ${user.Name || "there"}!
+                </h2>
+
+                <p style="font-size:15px;line-height:1.7;color:#4b5563;">
+                  We're pleased to inform you that your account has been
+                  promoted to <strong style="color:#b8860b;">Support Agent</strong>
+                  at BitMax Support.
+                </p>
+
+                <div style="margin:24px 0;padding:18px;background:#fff9e8;border:1px solid #f2d58a;border-radius:10px;">
+                  <p style="margin:0 0 8px;color:#7c5a0a;font-size:13px;">
+                    YOUR NEW ROLE
+                  </p>
+                  <h3 style="margin:0;color:#202020;font-size:20px;">
+                    Support Agent
+                  </h3>
+                </div>
+
+                <p style="font-size:15px;line-height:1.7;color:#4b5563;">
+                  You can now log in to your account to access your agent
+                  dashboard, manage assigned tickets, and assist customers.
+                </p>
+
+                ${
+                  dashboardUrl
+                    ? `
+                      <div style="text-align:center;margin:28px 0;">
+                        <a href="${dashboardUrl}"
+                           style="display:inline-block;padding:13px 24px;background:#d4a72c;color:#111111;text-decoration:none;font-weight:bold;border-radius:7px;">
+                          Open Agent Dashboard
+                        </a>
+                      </div>
+                    `
+                    : ""
+                }
+
+                <p style="font-size:14px;line-height:1.7;color:#6b7280;">
+                  Thank you for being part of our support team. We wish you
+                  success in your new role!
+                </p>
+
+                <p style="margin-top:26px;font-size:14px;color:#374151;">
+                  Best regards,<br />
+                  <strong>BitMax Support Team</strong>
+                </p>
+              </div>
+
+              <div style="padding:16px;text-align:center;background:#f9fafb;border-top:1px solid #e5e7eb;">
+                <p style="margin:0;font-size:12px;color:#9ca3af;">
+                  This is an automated notification from BitMax Support.
+                </p>
+              </div>
+
+            </div>
+          </div>
+        `,
+      });
+    } catch (emailError) {
+      emailStatus = "failed";
+      console.error(
+        "Support agent promotion email failed:",
+        emailError.message
+      );
+    }
+
     return res.status(200).json({
       success: true,
       message: "User promoted to support agent successfully",
+      emailStatus,
     });
   } catch (error) {
     return next(error);
