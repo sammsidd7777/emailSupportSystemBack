@@ -213,7 +213,6 @@ const replyToTicketByAgent = async (req, res, next) => {
 
 // 4. Update status of an assigned ticket
 
-const sendEmail = require("../utils/email");
 
 const escapeHtml = (value = "") =>
   String(value)
