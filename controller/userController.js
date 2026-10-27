@@ -109,7 +109,9 @@ const myProfile = async (req, res) => {
   }
 };
 
-
+const generateOTP = () => {
+  return crypto.randomInt(100000, 1000000).toString();
+};
 
 const updateProfile = async (req, res, next) => {
   try {
@@ -270,7 +272,7 @@ const updateEmail = async (req, res, next) => {
     }
 
     // Generate secure 6-digit OTP
-    const otp = crypto.randomInt(100000, 1000000).toString();
+    const otp = await generateOTP();
 
     // Hash OTP before storing it
     const otpHash = crypto
