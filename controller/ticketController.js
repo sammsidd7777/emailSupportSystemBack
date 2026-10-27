@@ -109,27 +109,31 @@ const getTicketById = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return next(new AppError("Invalid ticket ID", 400));
-    }
-
-    const ticket = await TICKET.findById(id)
-      .populate({
-        path: "Messages",
-      })
-      .lean();
+    // 1. Fetch ticket
+    const ticket = await TICKET.findById(id).lean();
 
     if (!ticket) {
       return next(new AppError("Ticket not found", 404));
     }
 
+    // 2. Fetch all messages belonging to this ticket
+    const messages = await TICKETMESSAGE.find({
+      TicketId: ticket._id,
+    })
+      .sort({ createdAt: 1 })
+      .lean();
+
+    // 3. Return ticket and messages
     return res.status(200).json({
       success: true,
       message: "Ticket fetched successfully",
-      ticket,
+      ticket: {
+        ...ticket,
+        Messages: messages,
+      },
     });
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };
 
