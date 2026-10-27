@@ -43,7 +43,7 @@ const createTicket = async (req, res, next) => {
 
  const newMessage = await TICKETMESSAGE.create({
   TicketId: ticket._id,
-  TicketNumber: ticket.TicketNumber,
+  TicketNumber: TicketNum,
   Messages: [
     {
       SenderId: req.user._id,
