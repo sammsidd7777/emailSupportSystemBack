@@ -55,11 +55,20 @@ app.use("/api/auth", authRoute);
 app.use("/api/tickets", ticketRoute);
 app.use("/api/admin", adminRoute);
 app.use("/api/agent", agentRoute);
+// Keep the previous singular path working while clients migrate to /api/users.
 app.use("/api/user", userRoute);
+app.use("/api/users", userRoute);
 app.use("/api/messages", messageRoute);
 
 // Error handler must be last
 app.use(errorMiddleware);
 
 // Export Express app for Vercel
+if (require.main === module) {
+  const port = process.env.PORT || 3000;
+  app.listen(port, () => {
+    console.log(`Email Support Backend API listening on port ${port}`);
+  });
+}
+
 module.exports = app;
