@@ -46,7 +46,6 @@ const ticketMessageSchema = new mongoose.Schema(
 
     TicketNumber:{
       type:String,
-      required:true
     },
     Messages: [messageSchema],
   },
