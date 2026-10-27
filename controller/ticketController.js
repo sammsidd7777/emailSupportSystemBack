@@ -108,9 +108,16 @@ const getTicketById = async (req, res, next) => {
 
     const ticket = await TICKET.findById(id);
 
+
+
+    const message = await TICKETMESSAGE({TicketId :ticket._id})
+
+
     if (!ticket) {
       return next(new AppError("Ticket not found", 404));
     }
+
+     ticket.Messages = message
 
     return res.status(200).json({
       success: true,
