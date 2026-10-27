@@ -4,7 +4,7 @@ const TICKETMESSAGE = require("../module/ticketMessageSchema");
 const AppError = require("../utils/AppError");
 const USER = require("../module/userSchema");
 const  bcrypt =require("bcryptjs");
-const  crypto =("crypto");
+const crypto = require("crypto");
 const transporter = require("../utils/email.js");
 const mongoose = require("mongoose");
 
