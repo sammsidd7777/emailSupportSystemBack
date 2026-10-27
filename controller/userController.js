@@ -8,6 +8,8 @@ const crypto = require("crypto");
 const transporter = require("../utils/email.js");
 const mongoose = require("mongoose");
 
+const sendEmail = require("../utils/email.js");
+
 
 
 const userReplyToTicket = async (req, res, next) => {

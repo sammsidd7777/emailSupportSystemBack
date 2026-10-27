@@ -1,9 +1,14 @@
 const AppError = require("../utils/AppError");
 const USER = require("../module/userSchema");
 const TICKET = require("../module/ticketSchema");
-const sendTestEmail = require("../testEmail");
 const TICKETMESSAGE = require("../module/ticketMessageSchema");
 const mongoose = require("mongoose");
+const sendEmail = require("../utils/email");
+
+const {
+  createAgentAssignmentEmail,
+  createCustomerAssignmentEmail,
+} = require("../utils/emailTemplates");
 
 
 const createTicket = async (req, res, next) => {
@@ -143,57 +148,56 @@ const getTicketById = async (req, res, next) => {
 };
 
 
+
+
+
 const assignTicket = async (req, res, next) => {
   try {
     const { ticketId } = req.params;
     const { agentId } = req.body;
 
+    // Validate agent ID
     if (!agentId) {
       return next(new AppError("Agent ID is required", 400));
     }
 
-    console.log(ticketId, agentId, "assignTicket params");
+    console.log("Assign ticket params:", { ticketId, agentId });
 
-    // Find ticket and selected agent
+    // Find ticket
     const ticket = await TICKET.findById(ticketId);
+
     if (!ticket) {
       return next(new AppError("Ticket not found", 404));
     }
 
+    // Find selected agent
     const agent = await USER.findById(agentId);
+
     if (!agent) {
       return next(new AppError("Agent not found", 404));
     }
 
-    // // Validate agent role
-    // if (agent.Role !== "supportAgent") {
-    //   return next(
-    //     new AppError("Selected user is not a support agent", 403)
-    //   );
-    // }
+    // Optional: validate agent role
+    /*
+    if (agent.Role !== "supportAgent") {
+      return next(
+        new AppError("Selected user is not a support agent", 403)
+      );
+    }
+    */
 
-    // Validate category compatibility
-    // if (
-    //   String(ticket.Category || "").trim().toLowerCase() !==
-    //   String(agent.AgentRole || "").trim().toLowerCase()
-    // ) {
-    //   return next(
-    //     new AppError(
-    //       "Ticket category does not match the agent's category",
-    //       403
-    //     )
-    //   );
-    // }
-
-    // Optional: prevent assigning a closed ticket
+    // Validate ticket status
     const currentStatus = String(ticket.Status || "")
       .toLowerCase()
-      .replaceAll("_", " ")
+      .replace(/_/g, " ")
       .trim();
 
     if (["resolved", "closed"].includes(currentStatus)) {
       return next(
-        new AppError("Cannot assign a resolved or closed ticket", 400),
+        new AppError(
+          "Cannot assign a resolved or closed ticket",
+          400
+        )
       );
     }
 
@@ -204,86 +208,122 @@ const assignTicket = async (req, res, next) => {
 
     await ticket.save();
 
-  // Send assignment notification emails to both agent and customer
-const notifications = [
-  {
-    to: agent.Email,
-    subject: `New Ticket Assigned: ${ticket.TicketNumber}`,
-    text: `
-Hello ${agent.Name || "Support Agent"},
+    console.log("Ticket assigned successfully:", ticket._id);
 
-A new support ticket has been assigned to you.
+    // Frontend dashboard URLs
+    const frontendUrl = process.env.CLIENT_URL?.replace(/\/+$/, "");
 
-Ticket Number: ${ticket.TicketNumber}
-Subject: ${ticket.Subject}
+    const agentDashboardUrl = frontendUrl
+      ? `${frontendUrl}/agent/tickets/${ticket._id}`
+      : null;
 
-Please log in to your support dashboard to review and respond to the ticket.
+    const customerDashboardUrl = frontendUrl
+      ? `${frontendUrl}/user/tickets/${ticket._id}`
+      : null;
 
-Regards,
-Support Team
-    `.trim(),
-  },
-  {
-    to: ticket.RequesterEmail,
-    subject: `Your Ticket Has Been Assigned: ${ticket.TicketNumber}`,
-    text: `
-Hello ${ticket.RequesterName || "Customer"},
+    // Prepare separate HTML emails
+    const agentEmail = createAgentAssignmentEmail({
+      agent,
+      ticket,
+      dashboardUrl: agentDashboardUrl || frontendUrl || "",
+    });
 
-Your support ticket has been successfully assigned to a support agent.
+    const customerEmail = createCustomerAssignmentEmail({
+      ticket,
+      dashboardUrl: customerDashboardUrl || frontendUrl || "",
+    });
 
-Ticket Number: ${ticket.TicketNumber}
-Subject: ${ticket.Subject}
+    // Send emails independently
+    const emailResults = await Promise.allSettled([
+      (async () => {
+        if (!agent.Email) {
+          throw new Error("Agent email is missing");
+        }
 
-Our support agent will review your issue and respond as soon as possible.
+        if (!agentDashboardUrl) {
+          throw new Error("CLIENT_URL is missing");
+        }
 
-Thank you for contacting our support team.
+        return sendEmail({
+          to: agent.Email,
+          ...agentEmail,
+        });
+      })(),
 
-Regards,
-Support Team
-    `.trim(),
-  },
-];
+      (async () => {
+        if (!ticket.RequesterEmail) {
+          throw new Error("Customer email is missing");
+        }
 
-// Email failures should not undo the successful ticket assignment
-const emailResults = await Promise.allSettled(
-  notifications.map(async (email) => {
-    if (!email.to) {
-      throw new Error("Recipient email is missing");
+        if (!customerDashboardUrl) {
+          throw new Error("CLIENT_URL is missing");
+        }
+
+        return sendEmail({
+          to: ticket.RequesterEmail,
+          ...customerEmail,
+        });
+      })(),
+    ]);
+
+    // Log agent email result
+    if (emailResults[0].status === "fulfilled") {
+      console.log("Agent email sent successfully:", agent.Email);
+    } else {
+      console.error(
+        "Agent email failed:",
+        emailResults[0].reason?.message ||
+          emailResults[0].reason
+      );
     }
 
-    return sendTestEmail(email);
-  }),
-);
+    // Log customer email result
+    if (emailResults[1].status === "fulfilled") {
+      console.log(
+        "Customer email sent successfully:",
+        ticket.RequesterEmail
+      );
+    } else {
+      console.error(
+        "Customer email failed:",
+        emailResults[1].reason?.message ||
+          emailResults[1].reason
+      );
+    }
 
-emailResults.forEach((result, index) => {
-  if (result.status === "fulfilled") {
-    console.log(`Email sent to ${notifications[index].to}`);
-  } else {
-    console.error(
-      `Failed to send email to ${notifications[index].to}:`,
-      result.reason?.message || result.reason,
-    );
-  }
-});
-
-    // Return populated agent details
+    // Fetch updated ticket with agent details
     const updatedTicket = await TICKET.findById(ticket._id).populate(
       "AssignedTo",
-      "Name Email AgentRole Role",
+      "Name Email AgentRole Role"
     );
 
+    // Response
     return res.status(200).json({
       success: true,
       message: "Ticket assigned to agent successfully",
       ticket: updatedTicket,
+
+      emailStatus: {
+        agent:
+          emailResults[0].status === "fulfilled"
+            ? "sent"
+            : "failed",
+
+        customer:
+          emailResults[1].status === "fulfilled"
+            ? "sent"
+            : "failed",
+      },
+
       notificationsSent: emailResults.filter(
-        (result) => result.status === "fulfilled",
+        (result) => result.status === "fulfilled"
       ).length,
     });
   } catch (error) {
     return next(error);
   }
 };
+
 
 const allTicket = async (req, res, next) => {
   try {
