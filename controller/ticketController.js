@@ -100,29 +100,35 @@ const myTicketList = async (req, res, next) => {
   }
 };
 
+
 const getTicketById = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    console.log(id, "params");
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return next(new AppError("Invalid ticket ID", 400));
+    }
 
     const ticket = await TICKET.findById(id);
-
-
-
-    const message = await TICKETMESSAGE({TicketId :ticket._id})
-
 
     if (!ticket) {
       return next(new AppError("Ticket not found", 404));
     }
 
-     ticket.Messages = message
+    // Fetch the existing conversation from MongoDB
+    const conversation = await TICKETMESSAGE.findOne({
+      TicketId: ticket._id,
+    });
+
+    // Attach the message array to the ticket response
+    const ticketData = ticket.toObject();
+
+    ticketData.Messages = conversation?.Messages || [];
 
     return res.status(200).json({
       success: true,
       message: "Ticket fetched successfully",
-      ticket,
+      ticket: ticketData,
     });
   } catch (error) {
     next(error);
