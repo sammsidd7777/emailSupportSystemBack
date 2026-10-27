@@ -272,7 +272,7 @@ const updateEmail = async (req, res, next) => {
     }
 
     // Generate secure 6-digit OTP
-    const otp = await generateOTP();
+    const otp =  generateOTP();
 
     // Hash OTP before storing it
     const otpHash = crypto

@@ -178,6 +178,7 @@ const replyToTicketByAgent = async (req, res, next) => {
     // Find the existing conversation for this ticket
     const conversation = await TICKETMESSAGE.findOne({
       TicketId: ticket._id,
+      
     });
 
     if (!conversation) {
