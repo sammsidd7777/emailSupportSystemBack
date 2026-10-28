@@ -9,6 +9,7 @@ const {
   createAgentAssignmentEmail,
   createCustomerAssignmentEmail,
 } = require("../utils/emailTemplates");
+const sendPushNotification = require("../utils/sendPushNotification");
 
 
 const createTicket = async (req, res, next) => {
@@ -45,6 +46,16 @@ const createTicket = async (req, res, next) => {
       RequesterEmail: user.Email,
       Status: "open",
     });
+
+    // The ticket is already saved. A push failure must not undo it.
+sendPushNotification({
+  title: "New Support Ticket",
+  body: `Ticket ${ticket.TicketNumber || ticket._id} has been created.`,
+  url: "/admin/tickets",
+  ticketId: String(ticket._id),
+}).catch((error) => {
+  console.error("Ticket push notification failed:", error);
+});
 
  const newMessage = await TICKETMESSAGE.create({
   TicketId: ticket._id,

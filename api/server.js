@@ -16,6 +16,10 @@ const agentRoute = require("../router/agentRoute");
 const userRoute = require("../router/userRoute");
 const messageRoute = require("../router/messageRoute");
 
+const pushRoutes = require("../router/pushRoutes");
+
+app.use("/api/push", pushRoutes);
+
 const app = express();
 
 app.use(
