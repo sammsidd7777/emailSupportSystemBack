@@ -18,7 +18,7 @@ const messageRoute = require("../router/messageRoute");
 
 const pushRoutes = require("../router/pushRoutes");
 
-app.use("/api/push", pushRoutes);
+
 
 const app = express();
 
@@ -63,6 +63,7 @@ app.use("/api/agent", agentRoute);
 app.use("/api/user", userRoute);
 app.use("/api/users", userRoute);
 app.use("/api/messages", messageRoute);
+app.use("/api/push", pushRoutes);
 
 // Error handler must be last
 app.use(errorMiddleware);
