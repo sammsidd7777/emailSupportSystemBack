@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"name": "email-ticket-Backend",
+			"path": ".."
+		},
+		{
+			"name": "email-ticket-Frontend ",
+			"path": "../../email-ticket-Frontend "
+		}
+	]
+}
