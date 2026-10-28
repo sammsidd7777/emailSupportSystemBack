@@ -282,6 +282,35 @@ const userList = async (req, res, next) => {
   }
 };
 
+
+const userStatusToggel = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const user = await USER.findById(id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    user.Status = !user.Status;
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "User status changed successfully",
+      status: user.Status,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
 const agentList = async (req, res, next) => {
   try {
     const agents = await USER.find({ Role: "supportAgent" }).sort({ createdAt: -1 });
@@ -298,4 +327,4 @@ const agentList = async (req, res, next) => {
 };
 
 
-module.exports = { adminDashboard, makeAgent, removeAgent, deleteUser, userList, agentList };
+module.exports = { adminDashboard, makeAgent, removeAgent, deleteUser, userList, agentList ,userStatusToggel};
