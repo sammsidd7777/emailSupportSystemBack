@@ -29,7 +29,7 @@ router.get("/profile", protect,myProfile );
 // Update name and phone
 router.post("/profile", protect, updateProfile);
 
-router.post("/:id/status",protect,userStatusToggel)
+router.patch("/:id/status",protect,userStatusToggel)
 
 // Request email change (send OTP to new email)
 router.post("/profile/email/change-request", protect, updateEmail);
