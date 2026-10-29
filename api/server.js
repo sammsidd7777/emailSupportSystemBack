@@ -15,6 +15,7 @@ const adminRoute = require("../router/adminRoute");
 const agentRoute = require("../router/agentRoute");
 const userRoute = require("../router/userRoute");
 const messageRoute = require("../router/messageRoute");
+const aiRoute = require("../router/ai.routes")
 
 const pushRoutes = require("../router/pushRoutes");
 
@@ -63,6 +64,7 @@ app.use("/api/user", userRoute);
 app.use("/api/users", userRoute);
 app.use("/api/messages", messageRoute);
 app.use("/api/push", pushRoutes);
+app.use("/api/ai",aiRoute);
 
 
 // Error handler must be last
