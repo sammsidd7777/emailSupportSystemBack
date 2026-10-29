@@ -5,7 +5,6 @@ const messageSchema = new mongoose.Schema(
     SenderId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "USER",
-      required: true,
     },
     SenderEmail: {
       type: String,
@@ -14,7 +13,7 @@ const messageSchema = new mongoose.Schema(
     },
     SenderRole: {
       type: String,
-      enum: ["admin", "customer", "supportAgent"],
+      enum: ["admin", "customer", "supportAgent","ai"],
       required: true,
     },
     Body: {
