@@ -69,19 +69,18 @@ Your responsibilities:
     });
   } catch (error) {
     
-    console.error("OpenAI API Error:", {
-      message: error.message,
-      status: error.status,
-      code: error.code,
-      type: error.type,
-    });
+   
+  console.error("AI ERROR DETAILS:", error);
 
-    return res.status(500).json({
-      success: false,
-      message: "Unable to get an AI response. Please try again.",
-    });
-  }
-}
+  return res.status(500).json({
+    success: false,
+    message: error.message || "AI request failed",
+    status: error.status || 700,
+    code: error.code || "UNKNOWN_ERROR",
+  });
+  }}
+
+  
   
 
 module.exports = { chatWithAI };
