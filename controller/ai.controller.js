@@ -1,8 +1,8 @@
 
-const OpenAI = require("openai");
+const { GoogleGenAI } = require("@google/genai");
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
 });
 
 const chatWithAI = async (req, res) => {
@@ -16,14 +16,13 @@ const chatWithAI = async (req, res) => {
       });
     }
 
-    if (!process.env.OPENAI_API_KEY) {
+    if (!process.env.GEMINI_API_KEY) {
       return res.status(500).json({
         success: false,
-        message: "AI service is not configured.",
+        message: "Gemini API key is not configured.",
       });
     }
 
-    // Keep conversation history limited and accept only valid messages.
     const safeHistory = Array.isArray(history)
       ? history
           .filter(
@@ -33,54 +32,61 @@ const chatWithAI = async (req, res) => {
           )
           .slice(-10)
           .map((item) => ({
-            role: item.role,
-            content: item.content.slice(0, 3000),
+            role: item.role === "assistant" ? "model" : "user",
+            parts: [{ text: item.content.slice(0, 3000) }],
           }))
       : [];
 
-    const response = await openai.responses.create({
-      model: process.env.OPENAI_MODEL || "gpt-5.4-mini",
-      instructions: `
-You are the AI support assistant for an email ticketing system.
-
-Your responsibilities:
-- Understand the customer's issue.
-- Ask clear follow-up questions when needed.
-- Provide practical troubleshooting steps.
-- Keep replies friendly, concise, and professional.
-- Never claim that you have accessed an account, database, or ticket unless a tool actually confirms it.
-- Never claim that an issue is resolved unless the customer confirms it.
-- If the problem needs human intervention, recommend creating a support ticket.
-- Do not request passwords, OTPs, API keys, or other secrets.
-      `,
-      input: [
+    const response = await ai.models.generateContent({
+      model: process.env.GEMINI_MODEL || "gemini-3.7-flash",
+      contents: [
         ...safeHistory,
         {
           role: "user",
-          content: message.trim().slice(0, 5000),
+          parts: [{ text: message.trim().slice(0, 5000) }],
         },
       ],
-      max_output_tokens: 500,
+      config: {
+        systemInstruction: `
+You are a helpful customer support assistant.
+
+- Understand the customer's issue.
+- Give clear, practical troubleshooting steps.
+- Be polite and concise.
+- Never ask for passwords, OTPs, or API keys.
+- Never claim an issue is resolved without confirmation.
+- If the issue needs human support, suggest creating a support ticket.
+- Do not claim to access tickets or customer accounts.
+        `,
+        maxOutputTokens: 500,
+      },
     });
+
+    const reply = response.text;
+
+    if (!reply) {
+      return res.status(502).json({
+        success: false,
+        message: "Gemini did not return a text response.",
+      });
+    }
 
     return res.status(200).json({
       success: true,
-      reply: response.output_text,
+      reply,
     });
   } catch (error) {
-    
-   
-  console.error("AI ERROR DETAILS:", error);
+    console.error("Gemini API Error:", {
+      message: error.message,
+      status: error.status,
+      code: error.code,
+    });
 
-  return res.status(500).json({
-    success: false,
-    message: error.message || "AI request failed",
-    status: error.status || 700,
-    code: error.code || "UNKNOWN_ERROR",
-  });
-  }}
-
-  
-  
+    return res.status(500).json({
+      success: false,
+      message: "Unable to get an AI response. Please try again.",
+    });
+  }
+};
 
 module.exports = { chatWithAI };
