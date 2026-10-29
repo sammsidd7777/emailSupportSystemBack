@@ -1,18 +1,13 @@
-
 const TICKET = require("../module/ticketSchema");
 const TICKETMESSAGE = require("../module/ticketMessageSchema");
 const AppError = require("../utils/AppError");
 const USER = require("../module/userSchema");
-const  bcrypt =require("bcryptjs");
+const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const transporter = require("../utils/email.js");
 const mongoose = require("mongoose");
 
 const sendEmail = require("../utils/email.js");
-
-
-
-
 
 const userReplyToTicket = async (req, res, next) => {
   try {
@@ -27,9 +22,7 @@ const userReplyToTicket = async (req, res, next) => {
 
     // 2. Validate message
     if (typeof message !== "string" || !message.trim()) {
-      return next(
-        new AppError("Reply message is required.", 400)
-      );
+      return next(new AppError("Reply message is required.", 400));
     }
 
     // 3. Find customer's ticket
@@ -40,24 +33,16 @@ const userReplyToTicket = async (req, res, next) => {
 
     if (!ticket) {
       return next(
-        new AppError(
-          "Ticket not found or you do not own this ticket.",
-          404
-        )
+        new AppError("Ticket not found or you do not own this ticket.", 404),
       );
     }
 
     // 4. Check ticket status
     if (
-      ["resolved", "closed"].includes(
-        String(ticket.Status || "").toLowerCase()
-      )
+      ["resolved", "closed"].includes(String(ticket.Status || "").toLowerCase())
     ) {
       return next(
-        new AppError(
-          "Cannot reply to a closed or resolved ticket.",
-          400
-        )
+        new AppError("Cannot reply to a closed or resolved ticket.", 400),
       );
     }
 
@@ -67,31 +52,11 @@ const userReplyToTicket = async (req, res, next) => {
     });
 
     if (!conversation) {
-      return next(
-        new AppError("Conversation not found for this ticket.", 404)
-      );
+      return next(new AppError("Conversation not found for this ticket.", 404));
     }
 
-    // 6. Check whether an agent is assigned
+    // 6. Check agent assignment
     const assignedAgentId = ticket.AssignedTo;
-
-    // If no agent is assigned, allow only one customer message
-    if (!assignedAgentId) {
-      const existingCustomerMessages = conversation.Messages.filter(
-        (msg) =>
-          msg.SenderRole === "customer" &&
-          msg.Type === "public"
-      );
-
-      if (existingCustomerMessages.length >= 1) {
-        return next(
-          new AppError(
-            "No support agent is assigned yet. You can send only one message until an agent is assigned.",
-            400
-          )
-        );
-      }
-    }
 
     // 7. Save customer message
     conversation.Messages.push({
@@ -105,34 +70,107 @@ const userReplyToTicket = async (req, res, next) => {
 
     await conversation.save();
 
-    // 8. Notify assigned agent by email
+    // 8. If no agent is assigned, AI handles the conversation
+    if (!assignedAgentId) {
+      let aiReply = "";
+
+      try {
+        /*
+          IMPORTANT:
+          Replace generateAIReply with your existing AI function.
+          Pass the ticket's conversation history to the AI.
+        */
+
+        const history = conversation.Messages.map((msg) => ({
+          role: msg.SenderRole === "customer" ? "user" : "assistant",
+          content: msg.Body,
+        }));
+
+        aiReply = await generateAIReply({
+          message: message.trim(),
+          ticket,
+          history,
+        });
+
+        // Handle either a string response or an object response
+        if (typeof aiReply !== "string") {
+          aiReply =
+            aiReply?.reply || aiReply?.response || aiReply?.message || "";
+        }
+
+        if (aiReply && String(aiReply).trim()) {
+          /*
+            Recheck assignment before saving AI response.
+            If an agent has been assigned meanwhile, do not save
+            an AI reply to the conversation.
+          */
+          const latestTicket = await TICKET.findById(ticket._id)
+            .select("AssignedTo Status")
+            .lean();
+
+          const agentNowAssigned = Boolean(latestTicket?.AssignedTo);
+
+          const ticketNowClosed = ["resolved", "closed"].includes(
+            String(latestTicket?.Status || "").toLowerCase(),
+          );
+
+          if (!agentNowAssigned && !ticketNowClosed) {
+            conversation.Messages.push({
+              SenderId: null,
+              SenderEmail: "ai",
+              SenderRole: "ai",
+              Body: String(aiReply).trim(),
+              Source: "ai",
+              Type: "public",
+            });
+
+            await conversation.save();
+          } else {
+            // Assignment/status changed while AI was responding.
+            aiReply = "";
+          }
+        }
+      } catch (aiError) {
+        console.error("AI reply failed:", aiError.message);
+        // Customer message remains saved even if AI fails.
+      }
+
+      return res.status(201).json({
+        success: true,
+        message: "Your reply has been added successfully.",
+        data: conversation,
+        aiReply: aiReply || null,
+        emailStatus: "not_sent",
+      });
+    }
+
+    // 9. Agent is assigned: keep the existing email notification
+    // unchanged. AI is not called for assigned tickets.
+
     let emailStatus = "not_sent";
 
-    if (assignedAgentId) {
-      try {
-        const agent = await USER.findById(assignedAgentId).select(
-          "Name Email"
-        );
+    try {
+      const agent = await USER.findById(assignedAgentId).select("Name Email");
 
-        if (agent?.Email) {
-          const ticketNumber =
-            ticket.TicketNumber ||
-            conversation.TicketNumber ||
-            String(ticket._id);
+      if (agent?.Email) {
+        const ticketNumber =
+          ticket.TicketNumber ||
+          conversation.TicketNumber ||
+          String(ticket._id);
 
-          const escapeHtml = (value = "") =>
-            String(value)
-              .replace(/&/g, "&amp;")
-              .replace(/</g, "&lt;")
-              .replace(/>/g, "&gt;")
-              .replace(/"/g, "&quot;")
-              .replace(/'/g, "&#039;");
+        const escapeHtml = (value = "") =>
+          String(value)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
 
-          await sendEmail({
-            to: agent.Email,
-            subject: `New customer reply - Ticket ${ticketNumber}`,
+        await sendEmail({
+          to: agent.Email,
+          subject: `New customer reply - Ticket ${ticketNumber}`,
 
-            text: `
+          text: `
 Hello ${agent.Name || "Support Agent"},
 
 The customer has replied to a ticket assigned to you.
@@ -145,49 +183,48 @@ Customer message:
 ${message.trim()}
 
 Please log in to BitMax Support to respond.
-            `.trim(),
+          `.trim(),
 
-            html: `
-              <div style="font-family:Arial,sans-serif;background:#f3f4f6;padding:24px;color:#1f2937;">
-                <div style="max-width:600px;margin:auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
-                  <div style="background:#111827;padding:22px;text-align:center;">
-                    <h2 style="margin:0;color:#f5c451;">BitMax Support</h2>
-                    <p style="color:#fff;margin-bottom:0;">New Customer Reply</p>
-                  </div>
+          html: `
+            <div style="font-family:Arial,sans-serif;background:#f3f4f6;padding:24px;color:#1f2937;">
+              <div style="max-width:600px;margin:auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
+                <div style="background:#111827;padding:22px;text-align:center;">
+                  <h2 style="margin:0;color:#f5c451;">BitMax Support</h2>
+                  <p style="color:#fff;margin-bottom:0;">New Customer Reply</p>
+                </div>
 
-                  <div style="padding:24px;">
-                    <p>Hello ${escapeHtml(agent.Name || "Support Agent")},</p>
-                    <p>A customer has replied to a ticket assigned to you.</p>
+                <div style="padding:24px;">
+                  <p>Hello ${escapeHtml(agent.Name || "Support Agent")},</p>
+                  <p>A customer has replied to a ticket assigned to you.</p>
 
-                    <p><strong>Ticket:</strong> ${escapeHtml(ticketNumber)}</p>
-                    <p><strong>Subject:</strong> ${escapeHtml(ticket.Subject || "Support Ticket")}</p>
-                    <p><strong>Customer:</strong> ${escapeHtml(req.user.Name || req.user.Email || "Customer")}</p>
+                  <p><strong>Ticket:</strong> ${escapeHtml(ticketNumber)}</p>
+                  <p><strong>Subject:</strong> ${escapeHtml(ticket.Subject || "Support Ticket")}</p>
+                  <p><strong>Customer:</strong> ${escapeHtml(req.user.Name || req.user.Email || "Customer")}</p>
 
-                    <h3>Customer Message</h3>
-                    <div style="padding:16px;background:#fffbeb;border-left:4px solid #d4a72c;border-radius:6px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;">${escapeHtml(message.trim())}</div>
+                  <h3>Customer Message</h3>
+                  <div style="padding:16px;background:#fffbeb;border-left:4px solid #d4a72c;border-radius:6px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;">${escapeHtml(message.trim())}</div>
 
-                    <p style="margin-top:24px;">Please log in to your support dashboard to respond.</p>
-                    <p>Regards,<br/><strong>BitMax Support Team</strong></p>
-                  </div>
+                  <p style="margin-top:24px;">Please log in to your support dashboard to respond.</p>
+                  <p>Regards,<br/><strong>BitMax Support Team</strong></p>
                 </div>
               </div>
-            `,
-          });
+            </div>
+          `,
+        });
 
-          emailStatus = "sent";
-        } else {
-          emailStatus = "agent_email_missing";
-        }
-      } catch (emailError) {
-        emailStatus = "failed";
-        console.error(
-          "Customer reply email to agent failed:",
-          emailError.message
-        );
+        emailStatus = "sent";
+      } else {
+        emailStatus = "agent_email_missing";
       }
+    } catch (emailError) {
+      emailStatus = "failed";
+      console.error(
+        "Customer reply email to agent failed:",
+        emailError.message,
+      );
     }
 
-    // 9. Response
+    // 10. Response
     return res.status(201).json({
       success: true,
       message: "Your reply has been added successfully.",
@@ -198,8 +235,6 @@ Please log in to BitMax Support to respond.
     return next(error);
   }
 };
-
-
 
 const myProfile = async (req, res) => {
   try {
@@ -267,10 +302,7 @@ const updateProfile = async (req, res, next) => {
       });
     }
 
-    const isPasswordValid = await bcrypt.compare(
-      password,
-      user.PasswordHash
-    );
+    const isPasswordValid = await bcrypt.compare(password, user.PasswordHash);
 
     if (!isPasswordValid) {
       return res.status(401).json({
@@ -309,8 +341,6 @@ const updateProfile = async (req, res, next) => {
     next(error);
   }
 };
-
-
 
 const updateEmail = async (req, res, next) => {
   const requestId = `UPDATE_EMAIL_${Date.now()}`;
@@ -383,10 +413,7 @@ const updateEmail = async (req, res, next) => {
     // Password verification
     console.log(`[${requestId}] STEP 7: Before bcrypt.compare`);
 
-    const isPasswordValid = await bcrypt.compare(
-      password,
-      user.PasswordHash
-    );
+    const isPasswordValid = await bcrypt.compare(password, user.PasswordHash);
 
     console.log(`[${requestId}] STEP 8: After bcrypt.compare`, {
       isPasswordValid,
@@ -438,10 +465,7 @@ const updateEmail = async (req, res, next) => {
     // Hash OTP
     console.log(`[${requestId}] STEP 14: Before OTP hashing`);
 
-    const otpHash = crypto
-      .createHash("sha256")
-      .update(otp)
-      .digest("hex");
+    const otpHash = crypto.createHash("sha256").update(otp).digest("hex");
 
     console.log(`[${requestId}] STEP 15: OTP hashing completed`);
 
@@ -524,7 +548,6 @@ const updateEmail = async (req, res, next) => {
   }
 };
 
-
 const verifyEmailOtp = async (req, res, next) => {
   try {
     const id = req?.user?._id;
@@ -553,11 +576,7 @@ const verifyEmailOtp = async (req, res, next) => {
       });
     }
 
-    if (
-      !user.PendingEmail ||
-      !user.EmailOtpHash ||
-      !user.EmailOtpExpiresAt
-    ) {
+    if (!user.PendingEmail || !user.EmailOtpHash || !user.EmailOtpExpiresAt) {
       return res.status(400).json({
         success: false,
         message: "Please request an email verification OTP first",
@@ -657,9 +676,6 @@ const verifyEmailOtp = async (req, res, next) => {
   }
 };
 
-
-
-
 const updatePassword = async (req, res, next) => {
   try {
     const id = req.user?._id;
@@ -697,7 +713,7 @@ const updatePassword = async (req, res, next) => {
 
     const isPasswordValid = await bcrypt.compare(
       currentPassword,
-      user.PasswordHash
+      user.PasswordHash,
     );
 
     if (!isPasswordValid) {
@@ -707,10 +723,7 @@ const updatePassword = async (req, res, next) => {
       });
     }
 
-    const isSamePassword = await bcrypt.compare(
-      newPassword,
-      user.PasswordHash
-    );
+    const isSamePassword = await bcrypt.compare(newPassword, user.PasswordHash);
 
     if (isSamePassword) {
       return res.status(400).json({
@@ -732,7 +745,11 @@ const updatePassword = async (req, res, next) => {
   }
 };
 
-
-
-
-module.exports = { userReplyToTicket,myProfile,updateProfile,updateEmail,verifyEmailOtp,updatePassword };
+module.exports = {
+  userReplyToTicket,
+  myProfile,
+  updateProfile,
+  updateEmail,
+  verifyEmailOtp,
+  updatePassword,
+};
