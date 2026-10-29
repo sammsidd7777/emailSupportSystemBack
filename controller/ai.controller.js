@@ -82,11 +82,6 @@ Your responsibilities:
     });
   }
 
-    return res.status(500).json({
-      success: false,
-      message: "Unable to get an AI response. Please try again.",
-    });
-  }
-};
+  
 
 module.exports = { chatWithAI };
