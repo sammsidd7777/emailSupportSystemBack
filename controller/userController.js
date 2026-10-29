@@ -55,10 +55,10 @@ const userReplyToTicket = async (req, res, next) => {
       return next(new AppError("Conversation not found for this ticket.", 404));
     }
 
-    // 6. Check agent assignment
+    // 6. Check whether an agent is assigned
     const assignedAgentId = ticket.AssignedTo;
 
-    // 7. Save customer message
+    // 7. Save customer message first
     conversation.Messages.push({
       SenderId: userId,
       SenderEmail: req.user.Email,
@@ -70,107 +70,62 @@ const userReplyToTicket = async (req, res, next) => {
 
     await conversation.save();
 
-    // 8. If no agent is assigned, AI handles the conversation
+    let aiReply = null;
+    let emailStatus = "not_sent";
+
+    // 8. If ticket is unassigned, AI handles the conversation
     if (!assignedAgentId) {
-      let aiReply = "";
-
       try {
-        /*
-          IMPORTANT:
-          Replace generateAIReply with your existing AI function.
-          Pass the ticket's conversation history to the AI.
-        */
-
-        const history = conversation.Messages.map((msg) => ({
-          role: msg.SenderRole === "customer" ? "user" : "assistant",
-          content: msg.Body,
-        }));
-
+        // Replace this with your actual AI function.
         aiReply = await generateAIReply({
           message: message.trim(),
           ticket,
-          history,
+          history: conversation.Messages.map((msg) => ({
+            role: msg.SenderRole === "customer" ? "user" : "assistant",
+            content: msg.Body,
+          })),
         });
 
-        // Handle either a string response or an object response
-        if (typeof aiReply !== "string") {
-          aiReply =
-            aiReply?.reply || aiReply?.response || aiReply?.message || "";
-        }
-
         if (aiReply && String(aiReply).trim()) {
-          /*
-            Recheck assignment before saving AI response.
-            If an agent has been assigned meanwhile, do not save
-            an AI reply to the conversation.
-          */
-          const latestTicket = await TICKET.findById(ticket._id)
-            .select("AssignedTo Status")
-            .lean();
+          conversation.Messages.push({
+            SenderId: null,
+            SenderEmail: "ai",
+            SenderRole: "ai",
+            Body: String(aiReply).trim(),
+            Source: "ai",
+            Type: "public",
+          });
 
-          const agentNowAssigned = Boolean(latestTicket?.AssignedTo);
-
-          const ticketNowClosed = ["resolved", "closed"].includes(
-            String(latestTicket?.Status || "").toLowerCase(),
-          );
-
-          if (!agentNowAssigned && !ticketNowClosed) {
-            conversation.Messages.push({
-              SenderId: null,
-              SenderEmail: "ai",
-              SenderRole: "ai",
-              Body: String(aiReply).trim(),
-              Source: "ai",
-              Type: "public",
-            });
-
-            await conversation.save();
-          } else {
-            // Assignment/status changed while AI was responding.
-            aiReply = "";
-          }
+          await conversation.save();
         }
       } catch (aiError) {
         console.error("AI reply failed:", aiError.message);
-        // Customer message remains saved even if AI fails.
       }
+    } 
 
-      return res.status(201).json({
-        success: true,
-        message: "Your reply has been added successfully.",
-        data: conversation,
-        aiReply: aiReply || null,
-        emailStatus: "not_sent",
-      });
-    }
+    if (assignedAgentId) {
+      try {
+        const agent = await USER.findById(assignedAgentId).select("Name Email");
 
-    // 9. Agent is assigned: keep the existing email notification
-    // unchanged. AI is not called for assigned tickets.
+        if (agent?.Email) {
+          const ticketNumber =
+            ticket.TicketNumber ||
+            conversation.TicketNumber ||
+            String(ticket._id);
 
-    let emailStatus = "not_sent";
+          const escapeHtml = (value = "") =>
+            String(value)
+              .replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;")
+              .replace(/"/g, "&quot;")
+              .replace(/'/g, "&#039;");
 
-    try {
-      const agent = await USER.findById(assignedAgentId).select("Name Email");
+          await sendEmail({
+            to: agent.Email,
+            subject: `New customer reply - Ticket ${ticketNumber}`,
 
-      if (agent?.Email) {
-        const ticketNumber =
-          ticket.TicketNumber ||
-          conversation.TicketNumber ||
-          String(ticket._id);
-
-        const escapeHtml = (value = "") =>
-          String(value)
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
-
-        await sendEmail({
-          to: agent.Email,
-          subject: `New customer reply - Ticket ${ticketNumber}`,
-
-          text: `
+            text: `
 Hello ${agent.Name || "Support Agent"},
 
 The customer has replied to a ticket assigned to you.
@@ -183,52 +138,54 @@ Customer message:
 ${message.trim()}
 
 Please log in to BitMax Support to respond.
-          `.trim(),
+            `.trim(),
 
-          html: `
-            <div style="font-family:Arial,sans-serif;background:#f3f4f6;padding:24px;color:#1f2937;">
-              <div style="max-width:600px;margin:auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
-                <div style="background:#111827;padding:22px;text-align:center;">
-                  <h2 style="margin:0;color:#f5c451;">BitMax Support</h2>
-                  <p style="color:#fff;margin-bottom:0;">New Customer Reply</p>
-                </div>
+            html: `
+              <div style="font-family:Arial,sans-serif;background:#f3f4f6;padding:24px;color:#1f2937;">
+                <div style="max-width:600px;margin:auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
+                  <div style="background:#111827;padding:22px;text-align:center;">
+                    <h2 style="margin:0;color:#f5c451;">BitMax Support</h2>
+                    <p style="color:#fff;margin-bottom:0;">New Customer Reply</p>
+                  </div>
 
-                <div style="padding:24px;">
-                  <p>Hello ${escapeHtml(agent.Name || "Support Agent")},</p>
-                  <p>A customer has replied to a ticket assigned to you.</p>
+                  <div style="padding:24px;">
+                    <p>Hello ${escapeHtml(agent.Name || "Support Agent")},</p>
+                    <p>A customer has replied to a ticket assigned to you.</p>
 
-                  <p><strong>Ticket:</strong> ${escapeHtml(ticketNumber)}</p>
-                  <p><strong>Subject:</strong> ${escapeHtml(ticket.Subject || "Support Ticket")}</p>
-                  <p><strong>Customer:</strong> ${escapeHtml(req.user.Name || req.user.Email || "Customer")}</p>
+                    <p><strong>Ticket:</strong> ${escapeHtml(ticketNumber)}</p>
+                    <p><strong>Subject:</strong> ${escapeHtml(ticket.Subject || "Support Ticket")}</p>
+                    <p><strong>Customer:</strong> ${escapeHtml(req.user.Name || req.user.Email || "Customer")}</p>
 
-                  <h3>Customer Message</h3>
-                  <div style="padding:16px;background:#fffbeb;border-left:4px solid #d4a72c;border-radius:6px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;">${escapeHtml(message.trim())}</div>
+                    <h3>Customer Message</h3>
+                    <div style="padding:16px;background:#fffbeb;border-left:4px solid #d4a72c;border-radius:6px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;">${escapeHtml(message.trim())}</div>
 
-                  <p style="margin-top:24px;">Please log in to your support dashboard to respond.</p>
-                  <p>Regards,<br/><strong>BitMax Support Team</strong></p>
+                    <p style="margin-top:24px;">Please log in to your support dashboard to respond.</p>
+                    <p>Regards,<br/><strong>BitMax Support Team</strong></p>
+                  </div>
                 </div>
               </div>
-            </div>
-          `,
-        });
+            `,
+          });
 
-        emailStatus = "sent";
-      } else {
-        emailStatus = "agent_email_missing";
+          emailStatus = "sent";
+        } else {
+          emailStatus = "agent_email_missing";
+        }
+      } catch (emailError) {
+        emailStatus = "failed";
+        console.error(
+          "Customer reply email to agent failed:",
+          emailError.message,
+        );
       }
-    } catch (emailError) {
-      emailStatus = "failed";
-      console.error(
-        "Customer reply email to agent failed:",
-        emailError.message,
-      );
     }
 
-    // 10. Response
+    // 10. Return saved conversation including the AI reply
     return res.status(201).json({
       success: true,
       message: "Your reply has been added successfully.",
       data: conversation,
+      aiReply,
       emailStatus,
     });
   } catch (error) {
