@@ -68,7 +68,19 @@ Your responsibilities:
       reply: response.output_text,
     });
   } catch (error) {
-    console.error("AI chat error:", error.message);
+    
+    console.error("OpenAI API Error:", {
+      message: error.message,
+      status: error.status,
+      code: error.code,
+      type: error.type,
+    });
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to get an AI response. Please try again.",
+    });
+  }
 
     return res.status(500).json({
       success: false,
