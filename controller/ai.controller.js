@@ -81,7 +81,7 @@ Your responsibilities:
       message: "Unable to get an AI response. Please try again.",
     });
   }
-
+}
   
 
 module.exports = { chatWithAI };
