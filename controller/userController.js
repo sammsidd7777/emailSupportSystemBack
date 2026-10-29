@@ -8,7 +8,7 @@ const transporter = require("../utils/email.js");
 const mongoose = require("mongoose");
 
 const sendEmail = require("../utils/email.js");
-const { chatWithAI } = require("./ai.controller.js");
+const { chatWithAI, generateAIReply } = require("./ai.controller.js");
 
 const userReplyToTicket = async (req, res, next) => {
   try {
@@ -71,14 +71,14 @@ const userReplyToTicket = async (req, res, next) => {
 
     await conversation.save();
 
-    let aiReply = null;
+    let aiReply ;
     let emailStatus = "not_sent";
 
     // 8. If ticket is unassigned, AI handles the conversation
     if (!assignedAgentId) {
       try {
         // Replace this with your actual AI function.
-        aiReply = await chatWithAI({
+        aiReply = await generateAIReply({
           message: message.trim(),
           ticket,
           history: conversation.Messages.map((msg) => ({
