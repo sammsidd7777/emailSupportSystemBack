@@ -2,6 +2,7 @@ const TICKET = require("../module/ticketSchema");
 const USER = require("../module/userSchema");
 const AppError = require("../utils/AppError");
 const sendEmail = require("../utils/email");
+const { createAgentAssignmentEmail, createCustomerAssignmentEmail } = require("../utils/emailTemplates");
 
 
 const adminDashboard = async (req, res, next) => {
