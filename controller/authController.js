@@ -112,7 +112,7 @@ const login = async (req, res, next) => {
       );
     }
 
-    const user = await USER.findOne({ Email });
+    const user = await USER?.findOne({ Email });
 
     if (!user) {
       return next(
@@ -150,7 +150,7 @@ const refreshToken = async(req,res,next)=>{
 
   const id = req.user?._id;
 
-  const user = await USER.findById(id);
+  const user = await USER?.findById(id);
 
   const message = "refrece token generated";
   const tokenTime = 24 * 60 * 60 * 1000;
