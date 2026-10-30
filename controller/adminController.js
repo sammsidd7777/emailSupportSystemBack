@@ -332,7 +332,7 @@ const agentList = async (req, res, next) => {
 
 const bulkAssignTickets = async (req, res, next) => {
   try {
-    const { agentId } = req.params;
+    const { agentId } = req.body;
     const { ticketIds } = req.body;
 
     if (!agentId) {
