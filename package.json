@@ -1,7 +1,7 @@
 {
   "scripts": {
-    "dev": "node api/server.js",
-    "start": "node api/server.js"
+    "dev": "node init && node api/server.js",
+    "start": "node init && node api/server.js"
   },
   "dependencies": {
     "@google/genai": "^2.32.0",

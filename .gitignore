@@ -1,7 +1,5 @@
 
 # Environment variables and secrets
-.env
-.env.*
 !.env.example
 
 # Dependencies
@@ -19,7 +17,6 @@ pnpm-debug.log*
 Thumbs.db
 
 # IDE settings
-.vscode/
 .idea/
 
 # Test coverage
@@ -28,3 +25,4 @@ coverage/
 # Temporary files
 tmp/
 temp/
+config.bat
