@@ -1,6 +1,8 @@
 const TICKET = require("../module/ticketSchema");
-const USER = require("../module/userSchema")
+const USER = require("../module/userSchema");
+const AppError = require("../utils/AppError");
 const sendEmail = require("../utils/email");
+const { unassignedTickets } = require("./ticketController");
 
 
 const adminDashboard = async (req, res, next) => {
@@ -327,4 +329,69 @@ const agentList = async (req, res, next) => {
 };
 
 
-module.exports = { adminDashboard, makeAgent, removeAgent, deleteUser, userList, agentList ,userStatusToggel};
+
+const bulkAssignTickets = async (req, res, next) => {
+  try {
+    const { agentId } = req.params;
+    const { ticketIds } = req.body;
+
+    if (!agentId) {
+      return next(new AppError("Agent ID is required", 400));
+    }
+
+    if (!Array.isArray(ticketIds) || ticketIds.length === 0) {
+      return next(new AppError("Please select tickets", 400));
+    }
+
+    const agent = await USER.findById(agentId);
+
+    if (!agent) {
+      return next(new AppError("Agent not found", 404));
+    }
+
+    const result = await TICKET.updateMany(
+      { _id: { $in: ticketIds } },
+      {
+        $set: {
+          AssignedTo: agentId,
+          Assigned: true,
+        },
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Tickets assigned successfully",
+      assignedCount: result.modifiedCount,
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+const autoAssignTickets = async (req,res,next) => {
+
+  try {
+
+    const agent =await  agentList();
+
+    const unAssingTicket = await unassignedTickets(); 
+
+    res.send(200).json({
+      success:true,
+      message:{agent,unAssingTicket}
+    })
+
+
+    
+  } catch (error) {
+    
+  }
+
+
+}
+
+
+module.exports = { bulkAssignTickets,autoAssignTickets,adminDashboard, makeAgent, removeAgent, deleteUser, userList, agentList ,userStatusToggel};

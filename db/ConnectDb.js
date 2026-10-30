@@ -3,6 +3,8 @@ const mongoose = require("mongoose");
 
 let isConnecting;
 
+
+
 async function connectDB(uri) {
   if (!uri) {
     throw new Error("MONGOURL environment variable is missing");
@@ -30,3 +32,5 @@ async function connectDB(uri) {
 }
 
 module.exports = connectDB;
+
+
