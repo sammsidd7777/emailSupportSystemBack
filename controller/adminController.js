@@ -371,27 +371,56 @@ const bulkAssignTickets = async (req, res, next) => {
 };
 
 
-const autoAssignTickets = async (req,res,next) => {
 
+const autoAssignTickets = async (req, res, next) => {
   try {
+    const agents = await agentList();
+    const tickets = await unassignedTickets();
 
-    const agent =await  agentList();
+    if (!agents || agents.length === 0) {
+      return next(new AppError("No agents available", 404));
+    }
 
-    const unAssingTicket = await unassignedTickets(); 
+    if (!tickets || tickets.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: "No unassigned tickets available",
+        assignedCount: 0,
+      });
+    }
 
-    res.send(200).json({
-      success:true,
-      message:{agent,unAssingTicket}
-    })
+    // Distribute tickets among agents
+    const bulkOperations = tickets.map((ticket, index) => {
+      const agent = agents[index % agents.length];
 
+      return {
+        updateOne: {
+          filter: { _id: ticket._id },
+          update: {
+            $set: {
+              AssignedTo: agent._id,
+              Assigned: true,
+            },
+          },
+        },
+      };
+    });
 
-    
+    const result = await TICKET.bulkWrite(bulkOperations);
+
+    return res.status(200).json({
+      success: true,
+      message: "Tickets automatically assigned successfully",
+      assignedCount: result.modifiedCount,
+      totalAgents: agents.length,
+      totalTickets: tickets.length,
+    });
+
   } catch (error) {
-    
+    next(error);
   }
+};
 
-
-}
 
 
 module.exports = { bulkAssignTickets,autoAssignTickets,adminDashboard, makeAgent, removeAgent, deleteUser, userList, agentList ,userStatusToggel};
