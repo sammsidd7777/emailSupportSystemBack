@@ -59,30 +59,18 @@ app.use(errorMiddleware);
 // Export Express app for Vercel
 module.exports = app;
 
+// Database connection outside local server condition
+connectDB().catch((error) => {
+  console.error("MongoDB Connection Failed:", error.message);
+});
+
 // Local server startup
 if (require.main === module) {
-  const startServer = async () => {
-    try {
-      if (!process.env.EMAIL_MONGO_URI) {
-        throw new Error("EMAIL_MONGO_URI is missing in environment variables");
-      }
+  const PORT = process.env.PORT || 3000;
 
-      // Connect MongoDB before starting server
-      await connectDB(process.env.EMAIL_MONGO_URI);
-
-      const PORT = process.env.PORT || 3000;
-
-      app.listen(PORT, () => {
-        console.log(
-          `Email Support Backend API running on port ${PORT}`
-        );
-      });
-
-    } catch (error) {
-      console.error("Server startup failed:", error.message);
-      process.exit(1);
-    }
-  };
-
-  startServer();
+  app.listen(PORT, () => {
+    console.log(
+      `Email Support Backend API running on port ${PORT}`
+    );
+  });
 }

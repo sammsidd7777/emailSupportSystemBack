@@ -1,36 +1,18 @@
-
 const mongoose = require("mongoose");
 
-let isConnecting;
+const connectDB = async () => {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      return;
+    }
 
+    await mongoose.connect(process.env.EMAIL_MONGO_URI);
 
-
-async function connectDB(uri) {
-  if (!uri) {
-    throw new Error("MONGOURL environment variable is missing");
+    console.log("MongoDB Connected Successfully");
+  } catch (error) {
+    console.error("MongoDB Connection Error:", error.message);
+    throw error;
   }
-
-  // Reuse an existing connection
-  if (mongoose.connection.readyState === 1) {
-    return mongoose.connection;
-  }
-
-  // Reuse an ongoing connection attempt
-  if (!isConnecting) {
-    isConnecting = mongoose
-      .connect(uri)
-      .then(() => {
-        console.log("MongoDB connected successfully");
-        return mongoose.connection;
-      })
-      .finally(() => {
-        isConnecting = null;
-      });
-  }
-
-  return isConnecting;
-}
+};
 
 module.exports = connectDB;
-
-
