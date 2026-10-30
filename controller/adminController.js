@@ -2,7 +2,6 @@ const TICKET = require("../module/ticketSchema");
 const USER = require("../module/userSchema");
 const AppError = require("../utils/AppError");
 const sendEmail = require("../utils/email");
-const {unassignedTickets}  = require("./ticketController");
 
 
 const adminDashboard = async (req, res, next) => {
