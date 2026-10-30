@@ -112,7 +112,7 @@ const login = async (req, res, next) => {
       );
     }
 
-    const user = await USER.findOne({ Email });
+    const user = await USER.find({ Email });
 
     if (!user) {
       return next(
