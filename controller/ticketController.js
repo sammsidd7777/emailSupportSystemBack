@@ -160,8 +160,6 @@ const getTicketById = async (req, res, next) => {
 
 
 
-
-
 const assignTicket = async (req, res, next) => {
   try {
     const { ticketId } = req.params;

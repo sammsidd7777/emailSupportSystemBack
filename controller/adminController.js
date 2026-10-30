@@ -2,7 +2,7 @@ const TICKET = require("../module/ticketSchema");
 const USER = require("../module/userSchema");
 const AppError = require("../utils/AppError");
 const sendEmail = require("../utils/email");
-const { unassignedTickets } = require("./ticketController");
+const {unassignedTickets}  = require("./ticketController");
 
 
 const adminDashboard = async (req, res, next) => {
@@ -372,16 +372,28 @@ const bulkAssignTickets = async (req, res, next) => {
 
 
 
+
 const autoAssignTickets = async (req, res, next) => {
   try {
-    const agents = await agentList();
-    const tickets = await unassignedTickets();
+    // 1. Fetch all support agents
+    const agents = await USER.find({
+      Role: "supportAgent",
+    });
 
-    if (!agents || agents.length === 0) {
+    if (!agents.length) {
       return next(new AppError("No agents available", 404));
     }
 
-    if (!tickets || tickets.length === 0) {
+    // 2. Fetch unassigned tickets
+    const tickets = await TICKET.find({
+      $or: [
+        { AssignedTo: { $exists: false } },
+        { AssignedTo: null },
+      ],
+      Status: { $nin: ["resolved", "closed"] },
+    }).sort({ createdAt: 1 });
+
+    if (!tickets.length) {
       return res.status(200).json({
         success: true,
         message: "No unassigned tickets available",
@@ -389,37 +401,125 @@ const autoAssignTickets = async (req, res, next) => {
       });
     }
 
-    // Distribute tickets among agents
-    const bulkOperations = tickets.map((ticket, index) => {
-      const agent = agents[index % agents.length];
+    // 3. Assign tickets using round-robin
+    const assignments = await Promise.all(
+      tickets.map(async (ticket, index) => {
+        const agent = agents[index % agents.length];
 
-      return {
-        updateOne: {
-          filter: { _id: ticket._id },
-          update: {
+        const updatedTicket = await TICKET.findOneAndUpdate(
+          {
+            _id: ticket._id,
+            $or: [
+              { AssignedTo: { $exists: false } },
+              { AssignedTo: null },
+            ],
+          },
+          {
             $set: {
               AssignedTo: agent._id,
               Assigned: true,
+              Status: "in_progress",
             },
           },
-        },
-      };
-    });
+          { new: true }
+        ).populate("AssignedTo", "Name Email AgentRole Role");
 
-    const result = await TICKET.bulkWrite(bulkOperations);
+        return updatedTicket;
+      })
+    );
+
+    // Remove tickets that could not be assigned
+    const assignedTickets = assignments.filter(Boolean);
+
+    // 4. Prepare dashboard URL
+    const frontendUrl = process.env.CLIENT_URL?.replace(/\/+$/, "");
+
+    // 5. Send emails to both agent and customer
+    const emailResults = await Promise.all(
+      assignedTickets.map(async (ticket) => {
+        const agent = ticket.AssignedTo;
+
+        const agentDashboardUrl = frontendUrl
+          ? `${frontendUrl}/agent/tickets/${ticket._id}`
+          : "";
+
+        const customerDashboardUrl = frontendUrl
+          ? `${frontendUrl}/user/tickets/${ticket._id}`
+          : "";
+
+        const agentEmail = createAgentAssignmentEmail({
+          agent,
+          ticket,
+          dashboardUrl: agentDashboardUrl,
+        });
+
+        const customerEmail = createCustomerAssignmentEmail({
+          ticket,
+          dashboardUrl: customerDashboardUrl,
+        });
+
+        return Promise.allSettled([
+          // Agent notification
+          (async () => {
+            if (!agent?.Email) {
+              throw new Error("Agent email is missing");
+            }
+
+            if (!frontendUrl) {
+              throw new Error("CLIENT_URL is missing");
+            }
+
+            return sendEmail({
+              to: agent.Email,
+              ...agentEmail,
+            });
+          })(),
+
+          // Customer notification
+          (async () => {
+            if (!ticket.RequesterEmail) {
+              throw new Error("Customer email is missing");
+            }
+
+            if (!frontendUrl) {
+              throw new Error("CLIENT_URL is missing");
+            }
+
+            return sendEmail({
+              to: ticket.RequesterEmail,
+              ...customerEmail,
+            });
+          })(),
+        ]);
+      })
+    );
+
+    // 6. Count successful emails
+    const allEmailResults = emailResults.flat();
+
+    const emailsSent = allEmailResults.filter(
+      (result) => result.status === "fulfilled"
+    ).length;
+
+    const emailsFailed = allEmailResults.length - emailsSent;
 
     return res.status(200).json({
       success: true,
       message: "Tickets automatically assigned successfully",
-      assignedCount: result.modifiedCount,
+
+      assignedCount: assignedTickets.length,
       totalAgents: agents.length,
       totalTickets: tickets.length,
+
+      emailsSent,
+      emailsFailed,
     });
 
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };
+
 
 
 
